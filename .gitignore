@@ -1,0 +1,31 @@
+# Python virtual environment
+venv/
+.venv/
+env/
+ENV/
+
+# Secrets and environment variables
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Byte-compiled / optimized files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Pytest & coverage caches
+.pytest_cache/
+.coverage
+htmlcov/
+
+# macOS metadata
+.DS_Store
+._*
+
+# IDE & editor directories
+.vscode/
+.idea/
+*.swp
+*~

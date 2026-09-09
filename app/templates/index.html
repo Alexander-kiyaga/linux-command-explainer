@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Linux Command Explainer - Learn what Linux commands do with safe, structured, plain-English explanations.">
+  <title>Linux Command Explainer</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-content">
+        <div class="brand">
+          <span class="brand-icon" aria-hidden="true">🐧</span>
+          <div class="brand-text">
+            <h1>Linux Command Explainer</h1>
+            <p class="tagline">Understand shell commands in plain English — without running them.</p>
+          </div>
+        </div>
+        <div class="header-badges">
+          <span class="badge badge-safety" title="Submitted commands are strictly analyzed as text and never executed">
+            🔒 Safe: Never Executes Code
+          </span>
+          <span class="badge {% if api_key_configured %}badge-success{% else %}badge-warning{% endif %}" id="api-status-badge">
+            {% if api_key_configured %}
+              ● Gemini Connected
+            {% else %}
+              ⚠ API Key Missing
+            {% endif %}
+          </span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="app-main">
+      <!-- Honest Setup Alert (Shown if API key is not configured) -->
+      <section id="api-key-banner" class="alert-banner alert-warning {% if api_key_configured %}hidden{% endif %}" role="region" aria-label="API Key Setup Notice">
+        <div class="alert-icon" aria-hidden="true">💡</div>
+        <div class="alert-body">
+          <h2 class="alert-title">Gemini API Key Needed for Live AI Explanations</h2>
+          <p class="alert-desc">
+            This app uses the official Google Gemini API to analyze commands. Because no API key is configured yet, AI explanations are currently paused.
+            <strong>We never present mock responses as real AI output.</strong>
+          </p>
+          <div class="setup-steps">
+            <p><strong>Quick Local Setup:</strong></p>
+            <ol>
+              <li>Get a free key from <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer">Google AI Studio</a>.</li>
+              <li>Create a <code>.env</code> file in your project folder: <code>cp .env.example .env</code></li>
+              <li>Add your key: <code>GEMINI_API_KEY=your_actual_key_here</code></li>
+              <li>Restart the server: <code>python wsgi.py</code></li>
+            </ol>
+          </div>
+        </div>
+      </section>
+
+      <!-- Command Input Section -->
+      <section class="card explainer-input-card" aria-labelledby="input-section-title">
+        <h2 id="input-section-title" class="sr-only">Explain a Command</h2>
+        
+        <form id="explain-form" class="explain-form" novalidate>
+          <label for="command-input" class="input-label">
+            <span>Enter any Linux command to explain:</span>
+            <span class="char-counter" id="char-counter">0 / {{ max_input_length }}</span>
+          </label>
+          <div class="input-row">
+            <div class="input-wrapper">
+              <span class="terminal-prompt-char" aria-hidden="true">$</span>
+              <input
+                type="text"
+                id="command-input"
+                name="command"
+                class="command-input"
+                placeholder="e.g. tar -czvf archive.tar.gz ./data"
+                maxlength="{{ max_input_length }}"
+                autocomplete="off"
+                spellcheck="false"
+                required
+              >
+              <button type="button" id="clear-btn" class="btn-clear hidden" title="Clear input" aria-label="Clear input">
+                ✕
+              </button>
+            </div>
+            <button type="submit" id="explain-btn" class="btn btn-primary">
+              <span class="btn-icon" aria-hidden="true">🔍</span>
+              <span class="btn-text">Explain</span>
+            </button>
+          </div>
+        </form>
+
+        <!-- Quick Examples -->
+        <div class="quick-examples" aria-label="Quick example commands">
+          <span class="quick-label">Try an example:</span>
+          <div class="quick-chips">
+            <button type="button" class="chip" data-cmd="ls -lah /var/log">ls -lah /var/log</button>
+            <button type="button" class="chip" data-cmd="find . -type f -name '*.log' -mtime +7">find . -name '*.log'</button>
+            <button type="button" class="chip" data-cmd="sed -i 's/foo/bar/g' config.txt">sed -i 's/foo/bar/g' config.txt</button>
+            <button type="button" class="chip" data-cmd="tar -czvf backup.tar.gz ./src">tar -czvf backup.tar.gz</button>
+            <button type="button" class="chip chip-danger" data-cmd="rm -rf /tmp/build_cache">rm -rf /tmp/build_cache</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Dynamic Explanation Output Region -->
+      <section id="explanation-container" class="explanation-container hidden" aria-live="polite" aria-atomic="true">
+        <!-- Loading Skeleton -->
+        <div id="loading-state" class="card loading-card hidden">
+          <div class="spinner-container">
+            <div class="spinner" aria-hidden="true"></div>
+            <p class="loading-text">Analyzing command structure and Linux behavior with Gemini...</p>
+          </div>
+          <div class="skeleton skeleton-header"></div>
+          <div class="skeleton skeleton-line"></div>
+          <div class="skeleton skeleton-line short"></div>
+          <div class="skeleton skeleton-card"></div>
+        </div>
+
+        <!-- Error Feedback Card -->
+        <div id="error-card" class="card error-card hidden" role="alert">
+          <div class="error-header">
+            <span class="error-icon" aria-hidden="true">⚠️</span>
+            <h3 id="error-title" class="error-title">Unable to Explain Command</h3>
+          </div>
+          <p id="error-message" class="error-message"></p>
+          <div id="error-actions" class="error-actions hidden">
+            <a href="#api-key-banner" class="btn btn-secondary btn-sm">View Setup Instructions</a>
+          </div>
+        </div>
+
+        <!-- Results Card (Safely populated with textContent via JS) -->
+        <article id="results-card" class="card results-card hidden">
+          <!-- Command Header & Impact Badge -->
+          <div class="result-header">
+            <div class="result-cmd-box">
+              <span class="terminal-tag" aria-hidden="true">Command:</span>
+              <code id="result-command-text" class="result-code"></code>
+            </div>
+            <div id="result-impact-badge" class="impact-badge" title="Command Impact">
+              <span id="result-impact-label"></span>
+            </div>
+          </div>
+
+          <!-- Impact Explanation Banner -->
+          <div id="impact-banner" class="impact-banner">
+            <span class="impact-icon" id="impact-icon" aria-hidden="true">ℹ️</span>
+            <span id="impact-description" class="impact-description"></span>
+          </div>
+
+          <!-- Dangerous Command Warning Box (if applicable) -->
+          <div id="safety-warning-box" class="safety-warning-box hidden" role="alert">
+            <span class="warning-icon" aria-hidden="true">🚨</span>
+            <div class="warning-content">
+              <strong>Caution / Potential Risk:</strong>
+              <p id="safety-warning-text"></p>
+            </div>
+          </div>
+
+          <!-- Plain English Summary -->
+          <section class="result-section">
+            <h3 class="section-title">What This Command Does</h3>
+            <p id="result-summary" class="summary-text"></p>
+          </section>
+
+          <!-- Token Breakdown -->
+          <section class="result-section" id="breakdown-section">
+            <h3 class="section-title">Command Breakdown (Parts, Options & Operands)</h3>
+            <div class="breakdown-grid" id="breakdown-grid"></div>
+          </section>
+
+          <!-- Common Options -->
+          <section class="result-section" id="common-options-section">
+            <h3 class="section-title">Common Additional Options</h3>
+            <div class="options-grid" id="options-grid"></div>
+          </section>
+
+          <!-- Useful Combinations & Examples -->
+          <section class="result-section" id="examples-section">
+            <h3 class="section-title">Useful Combinations & Practical Examples</h3>
+            <div class="examples-list" id="examples-list"></div>
+          </section>
+
+          <!-- Linux vs macOS / Version Differences & Uncertainty Notes -->
+          <section class="result-section notes-section" id="notes-section">
+            <h3 class="section-title">Linux Behavior & Version Notes</h3>
+            <p id="result-notes" class="notes-text"></p>
+          </section>
+        </article>
+      </section>
+
+      <!-- Searchable Linux Commands Dictionary Section -->
+      <section class="dictionary-section" aria-labelledby="dictionary-title">
+        <div class="dictionary-header">
+          <div class="dictionary-title-wrap">
+            <h2 id="dictionary-title">Linux Command Quick Reference</h2>
+            <p class="dictionary-subtitle">Explore 35 common Linux commands. Click <strong>Explain</strong> to analyze any command, or <strong>Copy</strong> to use it.</p>
+          </div>
+          
+          <!-- Search Box -->
+          <div class="search-box">
+            <span class="search-icon" aria-hidden="true">🔎</span>
+            <input
+              type="text"
+              id="dictionary-search"
+              class="search-input"
+              placeholder="Search commands, flags, or keywords (e.g. search, delete, memory)..."
+              aria-label="Search command dictionary"
+            >
+            <button type="button" id="clear-search-btn" class="btn-clear hidden" title="Clear search" aria-label="Clear search">✕</button>
+          </div>
+        </div>
+
+        <!-- Category Filter Tabs -->
+        <nav class="category-nav" aria-label="Filter commands by category">
+          <button type="button" class="cat-pill active" data-category="all">All Commands (<span id="count-all">0</span>)</button>
+          <button type="button" class="cat-pill" data-category="File & Directory Management">File & Directory</button>
+          <button type="button" class="cat-pill" data-category="Text Processing & Search">Text Processing</button>
+          <button type="button" class="cat-pill" data-category="System & Process Management">System & Processes</button>
+          <button type="button" class="cat-pill" data-category="Networking & Archiving">Networking & Archiving</button>
+        </nav>
+
+        <!-- Command Cards Grid -->
+        <div id="dictionary-grid" class="dictionary-grid" role="region" aria-label="Commands list">
+          <div class="loading-commands">Loading command dictionary...</div>
+        </div>
+
+        <!-- Empty Search State -->
+        <div id="no-commands-found" class="no-results hidden">
+          <p>No commands matched your search criteria.</p>
+          <button type="button" id="reset-search-btn" class="btn btn-secondary btn-sm">Reset Search</button>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <div class="footer-content">
+        <p><strong>Linux Command Explainer</strong> — An educational tool for understanding Linux commands.</p>
+        <p class="footer-note">
+          Commands are strictly analyzed as text and are never executed on the host system.
+          Always review commands carefully before running them in a production terminal.
+        </p>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Toast Notification Container for Copy Feedback -->
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+  <!-- Application Client Script -->
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

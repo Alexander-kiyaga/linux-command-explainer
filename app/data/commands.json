@@ -1,0 +1,317 @@
+[
+  {
+    "id": "ls",
+    "name": "ls",
+    "category": "File & Directory Management",
+    "description": "Lists directory contents, showing file names, permissions, sizes, and modification dates.",
+    "example": "ls -lah",
+    "impact": "read",
+    "impact_reason": "Reads filesystem directory contents without modifying files."
+  },
+  {
+    "id": "cd",
+    "name": "cd",
+    "category": "File & Directory Management",
+    "description": "Changes the current working directory of the active shell session.",
+    "example": "cd /var/log",
+    "impact": "modify",
+    "impact_reason": "Changes session state (the active working directory)."
+  },
+  {
+    "id": "pwd",
+    "name": "pwd",
+    "category": "File & Directory Management",
+    "description": "Prints the absolute pathname of the current working directory.",
+    "example": "pwd",
+    "impact": "read",
+    "impact_reason": "Reads and prints the current directory location."
+  },
+  {
+    "id": "mkdir",
+    "name": "mkdir",
+    "category": "File & Directory Management",
+    "description": "Creates one or more new directories.",
+    "example": "mkdir -p projects/my-app",
+    "impact": "modify",
+    "impact_reason": "Creates new directory entries on the filesystem."
+  },
+  {
+    "id": "cp",
+    "name": "cp",
+    "category": "File & Directory Management",
+    "description": "Copies files and directories to a specified destination.",
+    "example": "cp -r ./src ./backup",
+    "impact": "modify",
+    "impact_reason": "Writes duplicate copies of files or directories to disk."
+  },
+  {
+    "id": "mv",
+    "name": "mv",
+    "category": "File & Directory Management",
+    "description": "Moves or renames files and directories.",
+    "example": "mv draft.txt final.txt",
+    "impact": "modify",
+    "impact_reason": "Changes filesystem paths and filenames."
+  },
+  {
+    "id": "rm",
+    "name": "rm",
+    "category": "File & Directory Management",
+    "description": "Removes (deletes) files or directory trees permanently from the filesystem.",
+    "example": "rm -i obsolete.txt",
+    "impact": "delete",
+    "impact_reason": "Permanently unlinks and deletes files from the filesystem."
+  },
+  {
+    "id": "touch",
+    "name": "touch",
+    "category": "File & Directory Management",
+    "description": "Creates an empty file if it does not exist, or updates access and modification timestamps.",
+    "example": "touch notes.txt",
+    "impact": "modify",
+    "impact_reason": "Creates new files or alters existing file timestamps."
+  },
+  {
+    "id": "chmod",
+    "name": "chmod",
+    "category": "File & Directory Management",
+    "description": "Changes the access permissions (read, write, execute) of files and directories.",
+    "example": "chmod 755 deploy.sh",
+    "impact": "modify",
+    "impact_reason": "Modifies file permission modes stored in inode metadata."
+  },
+  {
+    "id": "chown",
+    "name": "chown",
+    "category": "File & Directory Management",
+    "description": "Changes user and group ownership of files and directories.",
+    "example": "chown www-data:www-data /var/www",
+    "impact": "modify",
+    "impact_reason": "Alters user and group ownership attributes of filesystem items."
+  },
+  {
+    "id": "grep",
+    "name": "grep",
+    "category": "Text Processing & Search",
+    "description": "Searches text or files for lines matching a specified regular expression pattern.",
+    "example": "grep -rn \"TODO\" ./src",
+    "impact": "read",
+    "impact_reason": "Inspects file contents without modifying them."
+  },
+  {
+    "id": "cat",
+    "name": "cat",
+    "category": "Text Processing & Search",
+    "description": "Concatenates and displays file contents to standard output.",
+    "example": "cat /etc/os-release",
+    "impact": "read",
+    "impact_reason": "Reads file contents and prints them to terminal output."
+  },
+  {
+    "id": "less",
+    "name": "less",
+    "category": "Text Processing & Search",
+    "description": "Interactive text viewer that allows forward and backward navigation through large files.",
+    "example": "less /var/log/syslog",
+    "impact": "read",
+    "impact_reason": "Opens an interactive viewer to inspect file contents."
+  },
+  {
+    "id": "head",
+    "name": "head",
+    "category": "Text Processing & Search",
+    "description": "Outputs the beginning lines (first 10 by default) of files.",
+    "example": "head -n 20 access.log",
+    "impact": "read",
+    "impact_reason": "Reads and displays the top lines of files."
+  },
+  {
+    "id": "tail",
+    "name": "tail",
+    "category": "Text Processing & Search",
+    "description": "Outputs the last part of files; commonly used with -f to monitor logs in real time.",
+    "example": "tail -f /var/log/nginx/error.log",
+    "impact": "read",
+    "impact_reason": "Reads and watches new lines appended to a file."
+  },
+  {
+    "id": "find",
+    "name": "find",
+    "category": "Text Processing & Search",
+    "description": "Recursively searches directory hierarchies for files matching criteria such as name, size, or type.",
+    "example": "find . -type f -name \"*.log\" -size +10M",
+    "impact": "depends",
+    "impact_reason": "By default find only searches and reads, but flags like -delete or -exec can delete or alter files."
+  },
+  {
+    "id": "sed",
+    "name": "sed",
+    "category": "Text Processing & Search",
+    "description": "Stream editor for filtering, parsing, and transforming text data.",
+    "example": "sed 's/localhost/127.0.0.1/g' config.txt",
+    "impact": "depends",
+    "impact_reason": "Without -i it prints transformed text to stdout (read-only), but with -i it alters files in place."
+  },
+  {
+    "id": "awk",
+    "name": "awk",
+    "category": "Text Processing & Search",
+    "description": "Pattern scanning and processing language for structured data and column extraction.",
+    "example": "awk -F: '{print $1, $3}' /etc/passwd",
+    "impact": "read",
+    "impact_reason": "Scans input streams or files and outputs formatted text."
+  },
+  {
+    "id": "wc",
+    "name": "wc",
+    "category": "Text Processing & Search",
+    "description": "Counts and displays newline, word, and byte/character counts for files.",
+    "example": "wc -l access.log",
+    "impact": "read",
+    "impact_reason": "Calculates line, word, or byte counts without altering files."
+  },
+  {
+    "id": "diff",
+    "name": "diff",
+    "category": "Text Processing & Search",
+    "description": "Compares files line by line and highlights differences.",
+    "example": "diff -u file1.txt file2.txt",
+    "impact": "read",
+    "impact_reason": "Reads two files and computes line differences."
+  },
+  {
+    "id": "sort",
+    "name": "sort",
+    "category": "Text Processing & Search",
+    "description": "Sorts lines of text files in alphabetical or numerical order.",
+    "example": "sort -u items.txt",
+    "impact": "read",
+    "impact_reason": "Reads input lines, sorts them, and outputs to standard output."
+  },
+  {
+    "id": "ps",
+    "name": "ps",
+    "category": "System & Process Management",
+    "description": "Reports a snapshot of the currently active processes on the system.",
+    "example": "ps aux | grep python",
+    "impact": "read",
+    "impact_reason": "Queries the kernel /proc filesystem for process state without terminating anything."
+  },
+  {
+    "id": "top",
+    "name": "top",
+    "category": "System & Process Management",
+    "description": "Provides an interactive, real-time view of system processor, memory, and running tasks.",
+    "example": "top",
+    "impact": "read",
+    "impact_reason": "Inspects and displays real-time CPU and memory metrics."
+  },
+  {
+    "id": "kill",
+    "name": "kill",
+    "category": "System & Process Management",
+    "description": "Sends a specified signal (such as TERM or KILL) to processes by process ID (PID).",
+    "example": "kill -15 4821",
+    "impact": "delete",
+    "impact_reason": "Sends termination signals to shut down or kill running processes."
+  },
+  {
+    "id": "df",
+    "name": "df",
+    "category": "System & Process Management",
+    "description": "Reports file system disk space usage across mounted storage devices.",
+    "example": "df -h",
+    "impact": "read",
+    "impact_reason": "Queries filesystem mount statistics and reports available space."
+  },
+  {
+    "id": "du",
+    "name": "du",
+    "category": "System & Process Management",
+    "description": "Estimates file and directory space usage recursively on disk.",
+    "example": "du -sh *",
+    "impact": "read",
+    "impact_reason": "Traverses files and directories to calculate disk consumption."
+  },
+  {
+    "id": "free",
+    "name": "free",
+    "category": "System & Process Management",
+    "description": "Displays total, used, and available physical memory (RAM) and swap space in the system.",
+    "example": "free -m",
+    "impact": "read",
+    "impact_reason": "Reads memory statistics from the kernel without modifying system state."
+  },
+  {
+    "id": "uname",
+    "name": "uname",
+    "category": "System & Process Management",
+    "description": "Prints kernel, architecture, hostname, and operating system information.",
+    "example": "uname -a",
+    "impact": "read",
+    "impact_reason": "Reads operating system name and kernel version string."
+  },
+  {
+    "id": "systemctl",
+    "name": "systemctl",
+    "category": "System & Process Management",
+    "description": "Controls the systemd system and service manager to inspect or control services.",
+    "example": "systemctl status nginx",
+    "impact": "depends",
+    "impact_reason": "Commands like 'status' only inspect state, but 'start', 'stop', 'restart', or 'enable' modify system services."
+  },
+  {
+    "id": "curl",
+    "name": "curl",
+    "category": "Networking & Archiving",
+    "description": "Command-line tool for transferring data with network URLs (HTTP, HTTPS, FTP).",
+    "example": "curl -I https://example.com",
+    "impact": "read",
+    "impact_reason": "Fetches HTTP headers from the target server; does not write to local disk without output flags."
+  },
+  {
+    "id": "ping",
+    "name": "ping",
+    "category": "Networking & Archiving",
+    "description": "Sends ICMP ECHO_REQUEST packets to network hosts to test reachability and latency.",
+    "example": "ping -c 4 8.8.8.8",
+    "impact": "read",
+    "impact_reason": "Sends network probe packets and displays timing statistics."
+  },
+  {
+    "id": "tar",
+    "name": "tar",
+    "category": "Networking & Archiving",
+    "description": "Creates, inspects, and extracts compressed archive files (.tar, .tar.gz, .tgz).",
+    "example": "tar -czvf backup.tar.gz ./data",
+    "impact": "depends",
+    "impact_reason": "-c creates new archives (modifies disk), -t lists contents (reads), and -x extracts and overwrites files."
+  },
+  {
+    "id": "ssh",
+    "name": "ssh",
+    "category": "Networking & Archiving",
+    "description": "Secure Shell client for logging into and executing commands on remote machines.",
+    "example": "ssh -i key.pem user@remote-host",
+    "impact": "depends",
+    "impact_reason": "Connects to a remote terminal where remote operations could read, write, or delete data."
+  },
+  {
+    "id": "rsync",
+    "name": "rsync",
+    "category": "Networking & Archiving",
+    "description": "Fast and versatile file-copying tool for local and remote synchronizations.",
+    "example": "rsync -avz ./src/ user@server:/backup/",
+    "impact": "depends",
+    "impact_reason": "Transfers and updates files on destination; if --delete is used, it deletes destination files not in source."
+  },
+  {
+    "id": "sudo",
+    "name": "sudo",
+    "category": "Networking & Archiving",
+    "description": "Executes a command with superuser (root) or alternative user privileges.",
+    "example": "sudo systemctl restart nginx",
+    "impact": "depends",
+    "impact_reason": "Elevation wrapper; the actual effect depends entirely on the command executed with root privileges."
+  }
+]
