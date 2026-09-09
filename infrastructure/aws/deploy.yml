@@ -1,0 +1,194 @@
+---
+- name: Deploy Linux Command Explainer
+  hosts: web
+  become: true
+
+  vars:
+    app_dir: /opt/linux-command-explainer
+    app_user: linuxexplainer
+    local_project: "{{ lookup('ansible.builtin.env', 'HOME') }}/linux-command-explainer"
+
+  tasks:
+    - name: Check whether Nginx is installed
+      ansible.builtin.command: rpm -q nginx
+      register: nginx_package
+      changed_when: false
+      failed_when: nginx_package.rc not in [0, 1]
+
+    - name: Install Nginx
+      ansible.builtin.command: dnf install -y nginx
+      when: nginx_package.rc == 1
+
+    - name: Create application group
+      ansible.builtin.group:
+        name: "{{ app_user }}"
+        system: true
+
+    - name: Create application service account
+      ansible.builtin.user:
+        name: "{{ app_user }}"
+        group: "{{ app_user }}"
+        system: true
+        create_home: false
+        shell: /sbin/nologin
+
+    - name: Create application directory
+      ansible.builtin.file:
+        path: "{{ app_dir }}"
+        state: directory
+        owner: root
+        group: "{{ app_user }}"
+        mode: "0755"
+
+    - name: Transfer and extract committed application
+      ansible.builtin.unarchive:
+        src: "{{ playbook_dir }}/application.tar.gz"
+        dest: "{{ app_dir }}"
+        owner: root
+        group: "{{ app_user }}"
+      notify: Restart application
+
+    - name: Create server Python virtual environment
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3.12
+          - -m
+          - venv
+          - "{{ app_dir }}/venv"
+        creates: "{{ app_dir }}/venv/bin/python"
+
+    - name: Install application dependencies
+      ansible.builtin.command:
+        argv:
+          - "{{ app_dir }}/venv/bin/python"
+          - -m
+          - pip
+          - install
+          - -r
+          - "{{ app_dir }}/requirements.txt"
+      register: pip_install
+      changed_when: "'Successfully installed' in pip_install.stdout"
+      notify: Restart application
+
+    - name: Privately transfer application environment
+      ansible.builtin.copy:
+        src: "{{ local_project }}/.env"
+        dest: "{{ app_dir }}/.env"
+        owner: root
+        group: "{{ app_user }}"
+        mode: "0640"
+      no_log: true
+      diff: false
+      notify: Restart application
+
+    - name: Configure application systemd service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/linux-explainer.service
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Linux Command Explainer
+          Wants=network-online.target
+          After=network-online.target
+
+          [Service]
+          Type=simple
+          User={{ app_user }}
+          Group={{ app_user }}
+          WorkingDirectory={{ app_dir }}
+          Environment=PYTHONUNBUFFERED=1
+          Environment=PYTHONDONTWRITEBYTECODE=1
+          Environment=FLASK_DEBUG=False
+          Environment=GEMINI_MODEL=gemini-3.6-flash
+          Environment=API_TIMEOUT_SECONDS=45
+          ExecStart={{ app_dir }}/venv/bin/gunicorn --workers 2 --bind 127.0.0.1:8000 --timeout 90 --access-logfile - --error-logfile - wsgi:app
+          Restart=on-failure
+          RestartSec=5
+          PrivateTmp=true
+          NoNewPrivileges=true
+
+          [Install]
+          WantedBy=multi-user.target
+      notify: Restart application
+
+    - name: Configure Nginx reverse proxy
+      ansible.builtin.copy:
+        dest: /etc/nginx/nginx.conf
+        owner: root
+        group: root
+        mode: "0644"
+        backup: true
+        validate: /usr/sbin/nginx -t -c %s
+        content: |
+          user nginx;
+          worker_processes auto;
+          error_log /var/log/nginx/error.log;
+          pid /run/nginx.pid;
+
+          events {
+              worker_connections 1024;
+          }
+
+          http {
+              include /etc/nginx/mime.types;
+              default_type application/octet-stream;
+              access_log /var/log/nginx/access.log;
+              sendfile on;
+              server_tokens off;
+
+              server {
+                  listen 80 default_server;
+                  server_name _;
+                  client_max_body_size 16k;
+
+                  location / {
+                      proxy_pass http://127.0.0.1:8000;
+                      proxy_set_header Host $host;
+                      proxy_set_header X-Real-IP $remote_addr;
+                      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                      proxy_set_header X-Forwarded-Proto $scheme;
+                      proxy_connect_timeout 5s;
+                      proxy_read_timeout 100s;
+                  }
+              }
+          }
+      notify: Restart Nginx
+
+    - name: Enable and start application
+      ansible.builtin.systemd_service:
+        name: linux-explainer
+        daemon_reload: true
+        enabled: true
+        state: started
+
+    - name: Enable and start Nginx
+      ansible.builtin.systemd_service:
+        name: nginx
+        enabled: true
+        state: started
+
+    - name: Apply pending service restarts
+      ansible.builtin.meta: flush_handlers
+
+    - name: Verify application through Nginx without calling Gemini
+      ansible.builtin.uri:
+        url: http://127.0.0.1/health
+        status_code: 200
+      register: health
+      until: health.status == 200
+      retries: 10
+      delay: 2
+
+  handlers:
+    - name: Restart application
+      ansible.builtin.systemd_service:
+        name: linux-explainer
+        daemon_reload: true
+        state: restarted
+
+    - name: Restart Nginx
+      ansible.builtin.systemd_service:
+        name: nginx
+        state: restarted
