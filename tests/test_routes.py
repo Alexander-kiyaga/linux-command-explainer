@@ -1,6 +1,18 @@
+from unittest.mock import patch
 import pytest
+
 from app import create_app
 from app.config import Config
+from app.explainer import (
+    ApiKeyInvalidError,
+    ClientPermissionError,
+    DailyQuotaExhaustedError,
+    ExplanationTimeoutError,
+    QuotaRateLimitUnknownError,
+    RateLimitMinuteError,
+    ServiceOverloadedError,
+    StructuredOutputParseError,
+)
 
 
 @pytest.fixture
@@ -95,4 +107,85 @@ def test_explain_api_key_missing(client, monkeypatch):
     data = response.get_json()
     assert data["success"] is False
     assert data["error"] == "api_key_missing"
-    assert "API key is not configured" in data["message"]
+    assert "not configured" in data["message"].lower()
+
+
+def test_route_daily_quota_exhausted(client):
+    """Test route returns HTTP 429 for DailyQuotaExhaustedError."""
+    with patch("app.routes.explain_command", side_effect=DailyQuotaExhaustedError("Daily limit reached", "20")):
+        response = client.post("/api/explain", json={"command": "ls -la"})
+        assert response.status_code == 429
+        data = response.get_json()
+        assert data["success"] is False
+        assert data["error"] == "daily_quota_exhausted"
+        assert data["details"]["quota_value"] == "20"
+
+
+def test_route_rate_limit_minute(client):
+    """Test route returns HTTP 429 for RateLimitMinuteError."""
+    with patch("app.routes.explain_command", side_effect=RateLimitMinuteError("Minute limit reached")):
+        response = client.post("/api/explain", json={"command": "ls -la"})
+        assert response.status_code == 429
+        data = response.get_json()
+        assert data["success"] is False
+        assert data["error"] == "rate_limit_minute"
+
+
+def test_route_quota_rate_limit_unknown(client):
+    """Test route returns HTTP 429 for QuotaRateLimitUnknownError."""
+    with patch("app.routes.explain_command", side_effect=QuotaRateLimitUnknownError("Quota error")):
+        response = client.post("/api/explain", json={"command": "ls -la"})
+        assert response.status_code == 429
+        data = response.get_json()
+        assert data["success"] is False
+        assert data["error"] == "quota_rate_limit_unknown"
+
+
+def test_route_server_overloaded(client):
+    """Test route returns HTTP 503 for ServiceOverloadedError."""
+    with patch("app.routes.explain_command", side_effect=ServiceOverloadedError("Server overloaded")):
+        response = client.post("/api/explain", json={"command": "ls -la"})
+        assert response.status_code == 503
+        data = response.get_json()
+        assert data["success"] is False
+        assert data["error"] == "server_overloaded"
+
+
+def test_route_timeout_504(client):
+    """Test route returns HTTP 504 for ExplanationTimeoutError."""
+    with patch("app.routes.explain_command", side_effect=ExplanationTimeoutError("Request timed out")):
+        response = client.post("/api/explain", json={"command": "ls -la"})
+        assert response.status_code == 504
+        data = response.get_json()
+        assert data["success"] is False
+        assert data["error"] == "timeout"
+
+
+def test_route_api_key_invalid(client):
+    """Test route returns HTTP 401 for ApiKeyInvalidError."""
+    with patch("app.routes.explain_command", side_effect=ApiKeyInvalidError("Invalid key")):
+        response = client.post("/api/explain", json={"command": "ls -la"})
+        assert response.status_code == 401
+        data = response.get_json()
+        assert data["success"] is False
+        assert data["error"] == "api_key_invalid"
+
+
+def test_route_permission_denied(client):
+    """Test route returns HTTP 403 for ClientPermissionError."""
+    with patch("app.routes.explain_command", side_effect=ClientPermissionError("Forbidden")):
+        response = client.post("/api/explain", json={"command": "ls -la"})
+        assert response.status_code == 403
+        data = response.get_json()
+        assert data["success"] is False
+        assert data["error"] == "permission_denied"
+
+
+def test_route_parse_error(client):
+    """Test route returns HTTP 502 for StructuredOutputParseError."""
+    with patch("app.routes.explain_command", side_effect=StructuredOutputParseError("Output truncated")):
+        response = client.post("/api/explain", json={"command": "ls -la"})
+        assert response.status_code == 502
+        data = response.get_json()
+        assert data["success"] is False
+        assert data["error"] == "parse_error"

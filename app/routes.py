@@ -4,9 +4,18 @@ from flask import Blueprint, jsonify, render_template, request
 
 from app.config import Config
 from app.explainer import (
+    GeminiAppError,
     ApiKeyMissingError,
-    ExplanationServiceError,
+    ApiKeyInvalidError,
+    DailyQuotaExhaustedError,
+    RateLimitMinuteError,
+    QuotaRateLimitUnknownError,
+    ServiceOverloadedError,
+    ExplanationTimeoutError,
+    StructuredOutputParseError,
+    ClientPermissionError,
     InputValidationError,
+    ExplanationServiceError,
     explain_command,
 )
 
@@ -75,26 +84,15 @@ def explain():
             "data": explanation.model_dump(),
         }), 200
 
-    except ApiKeyMissingError as e:
-        return jsonify({
+    except GeminiAppError as e:
+        response_payload = {
             "success": False,
-            "error": "api_key_missing",
-            "message": str(e),
-        }), 503
-
-    except InputValidationError as e:
-        return jsonify({
-            "success": False,
-            "error": "validation_error",
-            "message": str(e),
-        }), 400
-
-    except ExplanationServiceError as e:
-        return jsonify({
-            "success": False,
-            "error": "service_error",
-            "message": str(e),
-        }), 502
+            "error": e.error_code,
+            "message": e.message,
+        }
+        if e.details:
+            response_payload["details"] = e.details
+        return jsonify(response_payload), e.http_status
 
     except Exception as e:
         return jsonify({

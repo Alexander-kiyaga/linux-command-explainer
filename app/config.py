@@ -31,6 +31,12 @@ class Config:
     except ValueError:
         MAX_INPUT_LENGTH = 500
 
+    # Configurable maximum output token limit (reduces bloat, does not guarantee complete response)
+    try:
+        MAX_OUTPUT_TOKENS = int(os.getenv("MAX_OUTPUT_TOKENS", "1500"))
+    except ValueError:
+        MAX_OUTPUT_TOKENS = 1500
+
     # Server settings
     try:
         PORT = int(os.getenv("PORT", "5000"))

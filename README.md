@@ -138,7 +138,7 @@ The test suite thoroughly covers input validation, dictionary integrity, HTTP ro
 pytest -v
 ```
 
-All 19 core tests will pass in < 1 second.
+All 34 core tests will pass in < 1 second.
 
 ### Optional: Test Against the Real Gemini API
 To verify connectivity with your actual configured key:
@@ -168,10 +168,23 @@ Commands are not simplified into "safe" vs "dangerous":
 - **`depends`**: Outcome depends heavily on options or arguments (e.g. `sed` without `-i` streams to stdout, while `sed -i` alters files in place).
 - **`unknown`**: Ambiguous or custom syntax.
 
-### 4. Verified SDK Integration & Timeout Units
+### 4. Verified SDK Integration, Retries & Timeout Units
 - Uses the official Google GenAI Python SDK (`google-genai` 2.22.0).
-- Models configurable via `GEMINI_MODEL` (default: `gemini-2.5-flash`).
-- Timeouts in `API_TIMEOUT_SECONDS` (default: 15s) are converted to milliseconds (`15,000 ms`) for `types.HttpOptions(timeout=...)`.
+- **Exact Attempt Policy**: Client initialized with `retry_options=None`, which the SDK executes as `tenacity.stop_after_attempt(1)`. No automatic retries occur on daily quota exhaustion or errors, preventing stacked retries.
+- **Thinking Configuration**: For Gemini 3 models (e.g. `gemini-3.6-flash`), `thinking_level=ThinkingLevel.LOW` is configured as verified in official documentation, reducing latency and reasoning token volume without altering the model's fixed daily quota.
+- **Configurable Output Limit**: `MAX_OUTPUT_TOKENS` (default: 1500) caps output bloat. Truncated responses are caught gracefully and reported with actionable guidance without retrying.
+- **Timeout Units**: `API_TIMEOUT_SECONDS` (default: 15s) is converted to milliseconds (`15,000 ms`) for `types.HttpOptions(timeout=...)`.
+
+### 5. Submission Lock & Duplicate Prevention
+- A client-side submission lock (`isSubmitting`) disables the input box, Explain button, quick example chips, and dictionary cards while a request is in flight. This prevents redundant duplicate requests during slow responses or transient server delays.
+
+### 6. Granular Error Classification
+- **Daily Quota Exhaustion (429)**: Specifically detects `GenerateRequestsPerDay` metrics, extracts reported `quotaValue` when available, states that Google's daily quota schedule typically resets at midnight Pacific Time, and warns that a short `retryDelay` will not resolve a daily limit.
+- **Per-Minute Rate Limits (429)**: Differentiates short-term burst limits, advising users to pause 15–30 seconds.
+- **Unknown Quota / Rate Limit (429)**: Provides a fallback when the exact metric cannot be determined.
+- **Temporary Server Overload (503)**: Explains temporary Google server traffic spikes with a polite retry prompt.
+- **Timeouts & Deadlines (504 / 408)**: Maps 504 `DEADLINE_EXCEEDED` and client timeouts to clear timeout messages.
+- **Safe Duration Logging**: Measures live latency using `time.perf_counter()` and logs execution times without exposing API keys or credentials.
 
 ---
 

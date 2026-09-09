@@ -1,12 +1,15 @@
 /**
  * Linux Command Explainer - Frontend Application Logic
  *
- * CRITICAL SECURITY PRINCIPLES:
+ * CRITICAL SECURITY & STABILITY PRINCIPLES:
  * 1. Safe DOM manipulation: Untrusted user input and AI responses are ALWAYS
  *    rendered using `textContent` or DOM element creation. Never use `innerHTML`
  *    for dynamic content.
  * 2. Commands are purely explained and NEVER executed.
  * 3. Read-only commands are NOT automatically labelled as "safe".
+ * 4. Strict submission locking: Prevent duplicate in-flight requests.
+ * 5. Distinct, understandable error handling: Differentiate 503 overloads,
+ *    daily quota exhaustion, short-term rate limits, and timeouts.
  */
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -57,6 +60,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let commandsData = [];
   let activeCategory = "all";
   let searchQuery = "";
+  let isSubmitting = false; // Submission lock to prevent duplicate in-flight requests
   const maxLength = parseInt(commandInput?.getAttribute("maxlength") || "500", 10);
 
   // -------------------------------------------------------------------------
@@ -125,7 +129,6 @@ document.addEventListener("DOMContentLoaded", () => {
       if (navigator.clipboard && window.isSecureContext) {
         await navigator.clipboard.writeText(text);
       } else {
-        // Fallback for non-https or older browser environments
         const textArea = document.createElement("textarea");
         textArea.value = text;
         textArea.style.position = "fixed";
@@ -151,6 +154,52 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // -------------------------------------------------------------------------
+  // Submission Locking Helpers (Duplicate Prevention)
+  // -------------------------------------------------------------------------
+  function setSubmissionLock(locked) {
+    isSubmitting = locked;
+
+    if (commandInput) {
+      commandInput.disabled = locked;
+    }
+
+    if (explainBtn) {
+      explainBtn.disabled = locked;
+      const btnIcon = explainBtn.querySelector(".btn-icon");
+      const btnText = explainBtn.querySelector(".btn-text");
+      if (locked) {
+        if (btnIcon) btnIcon.textContent = "⏳";
+        if (btnText) btnText.textContent = "Analyzing...";
+      } else {
+        if (btnIcon) btnIcon.textContent = "🔍";
+        if (btnText) btnText.textContent = "Explain";
+      }
+    }
+
+    // Disable or enable quick chips
+    quickChips.forEach(chip => {
+      chip.disabled = locked;
+      if (locked) {
+        chip.classList.add("disabled");
+      } else {
+        chip.classList.remove("disabled");
+      }
+    });
+
+    // Disable or enable all card explain buttons
+    const cardExplainButtons = document.querySelectorAll(".btn-card-explain");
+    cardExplainButtons.forEach(btn => {
+      btn.disabled = locked;
+    });
+
+    // Disable or enable example list explain buttons
+    const exampleExplainButtons = document.querySelectorAll(".btn-icon-explain");
+    exampleExplainButtons.forEach(btn => {
+      btn.disabled = locked;
+    });
+  }
+
+  // -------------------------------------------------------------------------
   // Character Counter & Input Helpers
   // -------------------------------------------------------------------------
   function updateCharCounter() {
@@ -166,6 +215,7 @@ document.addEventListener("DOMContentLoaded", () => {
   commandInput.addEventListener("input", updateCharCounter);
 
   clearBtn.addEventListener("click", () => {
+    if (isSubmitting) return;
     commandInput.value = "";
     updateCharCounter();
     commandInput.focus();
@@ -174,6 +224,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Quick Chips
   quickChips.forEach(chip => {
     chip.addEventListener("click", () => {
+      if (isSubmitting) return;
       const cmd = chip.getAttribute("data-cmd");
       if (cmd) {
         commandInput.value = cmd;
@@ -193,11 +244,9 @@ document.addEventListener("DOMContentLoaded", () => {
     // 2. Impact Badge & Banner
     const impactInfo = getImpactConfig(data.impact);
 
-    // Reset impact badge classes
     resultImpactBadge.className = "impact-badge " + impactInfo.className;
     resultImpactLabel.textContent = impactInfo.label;
 
-    // Impact Banner
     impactBanner.className = "impact-banner " + impactInfo.className;
     impactIcon.textContent = impactInfo.icon;
     impactDescription.textContent = data.impact_explanation || impactInfo.defaultDesc;
@@ -214,7 +263,7 @@ document.addEventListener("DOMContentLoaded", () => {
     resultSummary.textContent = data.summary || "No summary provided.";
 
     // 5. Token Breakdown Grid (Clear and safely append elements)
-    breakdownGrid.innerHTML = ""; // Empty previous children
+    breakdownGrid.innerHTML = "";
     if (Array.isArray(data.breakdown) && data.breakdown.length > 0) {
       data.breakdown.forEach(item => {
         const card = document.createElement("div");
@@ -295,18 +344,19 @@ document.addEventListener("DOMContentLoaded", () => {
         copyBtn.textContent = "📋 Copy";
         copyBtn.addEventListener("click", () => copyToClipboard(ex.command, copyBtn));
 
-        const explainBtn = document.createElement("button");
-        explainBtn.type = "button";
-        explainBtn.className = "btn-icon-explain";
-        explainBtn.textContent = "🔍 Explain";
-        explainBtn.addEventListener("click", () => {
+        const explainBtnSub = document.createElement("button");
+        explainBtnSub.type = "button";
+        explainBtnSub.className = "btn-icon-explain";
+        explainBtnSub.textContent = "🔍 Explain";
+        explainBtnSub.addEventListener("click", () => {
+          if (isSubmitting) return;
           commandInput.value = ex.command;
           updateCharCounter();
           handleExplain(ex.command);
         });
 
         actions.appendChild(copyBtn);
-        actions.appendChild(explainBtn);
+        actions.appendChild(explainBtnSub);
 
         row.appendChild(codeEl);
         row.appendChild(actions);
@@ -337,19 +387,23 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // -------------------------------------------------------------------------
-  // Handle Explain Action
+  // Handle Explain Action (With Submission Lock)
   // -------------------------------------------------------------------------
   async function handleExplain(rawCommand) {
+    if (isSubmitting) {
+      return; // Prevent duplicate concurrent requests
+    }
+
     const command = (rawCommand || "").trim();
 
     if (!command) {
-      showError("Empty Command", "Please enter a Linux command to explain.");
+      showError("Empty Command", "Please enter a Linux command to explain.", "⚠️");
       commandInput.focus();
       return;
     }
 
     if (command.length > maxLength) {
-      showError("Command Too Long", `Command exceeds maximum limit of ${maxLength} characters.`);
+      showError("Command Too Long", `Command exceeds maximum limit of ${maxLength} characters.`, "⚠️");
       return;
     }
 
@@ -357,11 +411,11 @@ document.addEventListener("DOMContentLoaded", () => {
     explanationContainer.classList.remove("hidden");
     explanationContainer.scrollIntoView({ behavior: "smooth", block: "start" });
 
-    // Set UI to loading state
+    // Set UI to loading state & activate submission lock
+    setSubmissionLock(true);
     loadingState.classList.remove("hidden");
     errorCard.classList.add("hidden");
     resultsCard.classList.add("hidden");
-    explainBtn.disabled = true;
 
     try {
       const response = await fetch("/api/explain", {
@@ -372,11 +426,58 @@ document.addEventListener("DOMContentLoaded", () => {
         body: JSON.stringify({ command: command })
       });
 
-      const result = await response.json();
+      const result = await response.json().catch(() => ({
+        success: false,
+        error: "service_error",
+        message: `HTTP ${response.status} response could not be parsed.`
+      }));
 
       if (!response.ok || !result.success) {
-        if (result.error === "api_key_missing") {
-          // Show honest setup notification
+        const errType = result.error || "service_error";
+
+        if (errType === "daily_quota_exhausted") {
+          showError(
+            "Daily Free-Tier Quota Reached",
+            result.message || "Daily request quota has been reached for this free-tier model. Google's daily quota schedule typically resets at midnight Pacific Time. Please note that a short retry delay will not resolve a daily quota.",
+            "🛑"
+          );
+        } else if (errType === "rate_limit_minute") {
+          showError(
+            "Rate Limit Reached (Requests per Minute)",
+            result.message || "You have temporarily exceeded the per-minute request rate limit. Please wait 15–30 seconds before submitting another command.",
+            "⏱️"
+          );
+        } else if (errType === "quota_rate_limit_unknown") {
+          showError(
+            "Quota or Rate Limit Exceeded (HTTP 429)",
+            result.message || "Resource quota or rate limit exceeded. If this is a daily quota, a short retry delay will not resolve it. Please wait before trying again.",
+            "⚠️"
+          );
+        } else if (errType === "server_overloaded") {
+          showError(
+            "Gemini Service Overloaded (HTTP 503)",
+            result.message || "Google's Gemini servers are temporarily experiencing high traffic and could not complete the request. Please wait a few moments and try again.",
+            "🚦"
+          );
+        } else if (errType === "timeout") {
+          showError(
+            "Request Timed Out",
+            result.message || "The request took longer than the configured timeout to complete. Please try again.",
+            "⏳"
+          );
+        } else if (errType === "parse_error") {
+          showError(
+            "Incomplete Explanation",
+            result.message || "The explanation was cut short or could not be displayed completely. Please try asking about a simpler command or try again.",
+            "📄"
+          );
+        } else if (errType === "api_key_invalid") {
+          showError(
+            "Invalid Gemini API Key",
+            result.message || "The configured API key was rejected by Google. Please check your GEMINI_API_KEY in .env.",
+            "🔑"
+          );
+        } else if (errType === "api_key_missing") {
           if (apiKeyBanner) {
             apiKeyBanner.classList.remove("hidden");
             apiKeyBanner.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -384,12 +485,19 @@ document.addEventListener("DOMContentLoaded", () => {
           showError(
             "Gemini API Key Required",
             "A Google Gemini API key is required for real AI explanations. Please set GEMINI_API_KEY in your local .env file. We do not generate fake mock responses.",
+            "💡",
             true
           );
-        } else if (result.error === "validation_error") {
-          showError("Validation Error", result.message || "Invalid command input.");
+        } else if (errType === "permission_denied") {
+          showError(
+            "Permission Denied (HTTP 403)",
+            result.message || "Google API access was denied. Please check project permissions or regional availability.",
+            "🚫"
+          );
+        } else if (errType === "validation_error") {
+          showError("Input Validation Error", result.message || "Invalid command input.", "⚠️");
         } else {
-          showError("Service Error", result.message || "Failed to analyze command with Gemini.");
+          showError("Unable to Explain Command", result.message || "Failed to analyze command with Gemini.", "⚠️");
         }
         return;
       }
@@ -399,14 +507,22 @@ document.addEventListener("DOMContentLoaded", () => {
 
     } catch (err) {
       console.error("Explain request failed:", err);
-      showError("Network Error", "Unable to reach the local explainer server. Please verify the Flask server is running.");
+      showError(
+        "Network Error",
+        "Unable to reach the local explainer server. Please verify the Flask server is running.",
+        "⚠️"
+      );
     } finally {
       loadingState.classList.add("hidden");
-      explainBtn.disabled = false;
+      setSubmissionLock(false);
     }
   }
 
-  function showError(title, message, showSetupLink = false) {
+  function showError(title, message, icon = "⚠️", showSetupLink = false) {
+    const errorIconEl = errorCard.querySelector(".error-icon");
+    if (errorIconEl) {
+      errorIconEl.textContent = icon;
+    }
     errorTitle.textContent = title;
     errorMessage.textContent = message;
     if (showSetupLink) {
@@ -420,6 +536,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   explainForm.addEventListener("submit", (e) => {
     e.preventDefault();
+    if (isSubmitting) return;
     handleExplain(commandInput.value);
   });
 
@@ -450,11 +567,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const query = searchQuery.trim().toLowerCase();
 
     const filtered = commandsData.filter(item => {
-      // Category filter
       if (activeCategory !== "all" && item.category !== activeCategory) {
         return false;
       }
-      // Search text filter
       if (!query) return true;
 
       const inName = (item.name || "").toLowerCase().includes(query);
@@ -536,7 +651,9 @@ document.addEventListener("DOMContentLoaded", () => {
       expBtn.type = "button";
       expBtn.className = "btn-card-explain";
       expBtn.textContent = "🔍 Explain";
+      expBtn.disabled = isSubmitting;
       expBtn.addEventListener("click", () => {
+        if (isSubmitting) return;
         commandInput.value = item.example;
         updateCharCounter();
         handleExplain(item.example);
@@ -545,7 +662,6 @@ document.addEventListener("DOMContentLoaded", () => {
       actions.appendChild(copyBtn);
       actions.appendChild(expBtn);
 
-      // Assemble card
       card.appendChild(top);
       card.appendChild(desc);
       card.appendChild(exampleBox);
