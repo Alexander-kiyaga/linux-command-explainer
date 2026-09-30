@@ -19,3 +19,23 @@ def test_simulation_modules_have_no_host_browser_or_network_capabilities():
             assert not re.search(pattern, source), f"Forbidden capability {pattern} in {path}"
         for imported in re.findall(r'from\s+["\']([^"\']+)["\']', source):
             assert imported.startswith("."), f"Nonlocal import {imported} in {path}"
+
+
+def test_mission_core_modules_have_no_host_browser_or_network_capabilities():
+    mission_dir = SIMULATION.parent / "missions"
+    files = list(mission_dir.rglob("*.js"))
+    assert files
+    for path in files:
+        source = path.read_text(encoding="utf-8")
+        for pattern in FORBIDDEN:
+            assert not re.search(pattern, source), f"Forbidden capability {pattern} in {path}"
+        for imported in re.findall(r'from\s+["\']([^"\']+)["\']', source):
+            assert imported.startswith("."), f"Nonlocal import {imported} in {path}"
+
+
+def test_terminal_controllers_do_not_transmit_simulated_commands():
+    static_js = SIMULATION.parent
+    for name in ("terminal-ui.js", "playground.js", "missions.js"):
+        source = (static_js / name).read_text(encoding="utf-8")
+        for pattern in (r"\bfetch\s*\(", r"\bXMLHttpRequest\b", r"\bWebSocket\b"):
+            assert not re.search(pattern, source), f"Network API {pattern} in {name}"

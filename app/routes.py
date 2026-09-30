@@ -64,6 +64,16 @@ def playground_page():
     )
 
 
+@bp.route("/missions")
+def missions_page():
+    """Render the browser-only deterministic Missions experience."""
+    return render_template(
+        "missions.html",
+        active_page="missions",
+        api_key_configured=Config.is_api_key_configured(),
+    )
+
+
 @bp.route("/api/commands", methods=["GET"])
 def get_commands():
     """Return the searchable list of common Linux commands grouped by category."""

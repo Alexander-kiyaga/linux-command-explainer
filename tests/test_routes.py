@@ -38,8 +38,8 @@ def test_index_route(client):
     assert "Playground" in html
     assert "Missions" in html
     assert "Bash" in html
-    assert "Explain and Playground are available now." in html
-    assert "The other tools are planned for later phases." in html
+    assert "Explain, Playground and Missions are available now." in html
+    assert "Task Builder and Bash are planned for later phases." in html
     assert 'id="explain-form"' not in html
 
 
@@ -59,6 +59,22 @@ def test_explain_page_preserves_existing_interface(client):
     assert "Explain Never Executes Code" in html
     assert 'src="/static/js/explain.js"' in html
     assert client.get("/static/js/explain.js").status_code == 200
+
+
+def test_missions_page_is_browser_only_and_navigation_is_visible(client):
+    response = client.get("/missions")
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert 'href="/missions" aria-current="page"' in html
+    assert 'src="/static/js/missions.js"' in html
+    assert "Learning simulation" in html
+    assert "Completion is checked from virtual files" in html
+    assert client.get("/static/js/missions.js").status_code == 200
+    assert client.post("/api/missions/execute", json={"command": "pwd"}).status_code == 404
+    assert client.post("/api/missions/grade", json={}).status_code == 404
+    home = client.get("/").get_data(as_text=True)
+    assert 'href="/missions"' in home
+    assert "Open Missions" in home
 
 
 def test_playground_page_is_browser_only_simulation(client):

@@ -5,7 +5,7 @@
   <div class="home-hero-copy">
     <span class="home-eyebrow">A safer way to learn Linux</span>
     <h2 id="home-title">Understand the command.<br><span>Build the skill.</span></h2>
-    <p>Understand commands in plain English, then practice supported filesystem commands in a safe simulation. Task-based learning, missions, and Bash tools are planned.</p>
+    <p>Understand commands in plain English, then practice supported filesystem commands in a safe simulation. Missions offer guided practice. Task Builder and Bash tools are planned.</p>
     <a class="btn btn-primary home-cta" href="{{ url_for('main.explain_page') }}">Start with Explain <span aria-hidden="true">→</span></a>
   </div>
   <div class="home-terminal" aria-hidden="true">
@@ -24,7 +24,7 @@
   <div class="home-section-heading">
     <span class="home-eyebrow">Learning tools</span>
     <h2 id="tools-title">Find your next step</h2>
-    <p>Explain and Playground are available now. The other tools are planned for later phases.</p>
+    <p>Explain, Playground and Missions are available now. Task Builder and Bash are planned for later phases.</p>
   </div>
   <div class="tool-grid">
     <article class="tool-card tool-card-available">
@@ -44,10 +44,11 @@
       <p>Practice supported commands in a simulated terminal and filesystem.</p>
       <a href="{{ url_for('main.playground_page') }}" class="tool-link">Open Playground <span aria-hidden="true">→</span></a>
     </article>
-    <article class="tool-card">
-      <div class="tool-card-top"><span class="tool-icon" aria-hidden="true">🎯</span><span class="tool-status">Planned</span></div>
+    <article class="tool-card tool-card-available">
+      <div class="tool-card-top"><span class="tool-icon" aria-hidden="true">🎯</span><span class="tool-status tool-status-live">Available now</span></div>
       <h3>Missions</h3>
-      <p>Apply what you have learned to realistic system administration scenarios.</p>
+      <p>Solve guided scenarios in the same safe simulated filesystem.</p>
+      <a href="{{ url_for('main.missions_page') }}" class="tool-link">Open Missions <span aria-hidden="true">→</span></a>
     </article>
     <article class="tool-card">
       <div class="tool-card-top"><span class="tool-icon" aria-hidden="true">📜</span><span class="tool-status">Planned</span></div>

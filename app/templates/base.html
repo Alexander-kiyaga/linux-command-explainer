@@ -21,7 +21,7 @@
           </div>
         </div>
         <div class="header-badges">
-          {% if active_page == 'playground' %}
+          {% if active_page in ['playground', 'missions'] %}
           <span class="badge badge-safety" title="Playground uses a virtual filesystem in your browser">🧪 Browser-only simulation</span>
           {% else %}
           <span class="badge badge-safety" title="Explain analyzes commands as text and never executes them">
@@ -37,6 +37,7 @@
         <a href="{{ url_for('main.index') }}" {% if active_page == 'home' %}aria-current="page"{% endif %}>Home</a>
         <a href="{{ url_for('main.explain_page') }}" {% if active_page == 'explain' %}aria-current="page"{% endif %}>Explain</a>
         <a href="{{ url_for('main.playground_page') }}" {% if active_page == 'playground' %}aria-current="page"{% endif %}>Playground</a>
+        <a href="{{ url_for('main.missions_page') }}" {% if active_page == 'missions' %}aria-current="page"{% endif %}>Missions</a>
       </nav>
     </header>
 
