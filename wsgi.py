@@ -1,5 +1,5 @@
 """
-WSGI entry point for Linux Command Explainer.
+WSGI entry point for LinuxLab AI.
 Supports both direct local execution (`python wsgi.py`) bound to 127.0.0.1,
 and production WSGI servers like Gunicorn (`gunicorn wsgi:app`).
 """
@@ -15,7 +15,7 @@ if __name__ == "__main__":
     debug = Config.FLASK_DEBUG
 
     print("=" * 60)
-    print("  🐧 Linux Command Explainer - Development Server")
+    print("  🐧 LinuxLab AI - Development Server")
     print(f"  Local Address: http://{host}:{port}")
     print(f"  Gemini Model:  {Config.GEMINI_MODEL}")
     print(f"  API Key:       {'Configured' if Config.is_api_key_configured() else 'Missing (Set GEMINI_API_KEY in .env)'}")

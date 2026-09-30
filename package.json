@@ -1,0 +1,8 @@
+{
+  "name": "linuxlab-ai-development-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:js": "node tests/js/run.mjs"
+  }
+}

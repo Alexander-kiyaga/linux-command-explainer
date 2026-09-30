@@ -6,6 +6,7 @@ from app.config import Config
 from app.explainer import (
     ApiKeyInvalidError,
     ClientPermissionError,
+    CommandExplanation,
     DailyQuotaExhaustedError,
     ExplanationTimeoutError,
     QuotaRateLimitUnknownError,
@@ -24,13 +25,66 @@ def client():
 
 
 def test_index_route(client):
-    """Test that the index route loads HTML containing the app title."""
+    """Home introduces LinuxLab AI and links to the working Explain page."""
     response = client.get("/")
     assert response.status_code == 200
     html = response.get_data(as_text=True)
-    assert "Linux Command Explainer" in html
-    assert "Understand shell commands in plain English" in html
-    assert "Safe: Never Executes Code" in html
+    assert "Home | LinuxLab AI" in html
+    assert 'href="/" aria-current="page"' in html
+    assert 'href="/explain"' in html
+    assert 'href="/playground"' in html
+    assert "Start with Explain" in html
+    assert "Task Builder" in html
+    assert "Playground" in html
+    assert "Missions" in html
+    assert "Bash" in html
+    assert "Explain and Playground are available now." in html
+    assert "The other tools are planned for later phases." in html
+    assert 'id="explain-form"' not in html
+
+
+def test_explain_page_preserves_existing_interface(client):
+    """Explain remains available with its form, examples, results, and dictionary."""
+    response = client.get("/explain")
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert "Explain | LinuxLab AI" in html
+    assert 'href="/explain" aria-current="page"' in html
+    assert 'href="/"' in html
+    assert 'id="explain-form"' in html
+    assert 'id="command-input"' in html
+    assert 'id="results-card"' in html
+    assert 'id="dictionary-grid"' in html
+    assert "Safe: Never Executes Code" not in html
+    assert "Explain Never Executes Code" in html
+    assert 'src="/static/js/explain.js"' in html
+    assert client.get("/static/js/explain.js").status_code == 200
+
+
+def test_playground_page_is_browser_only_simulation(client):
+    response = client.get("/playground")
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert "Playground | LinuxLab AI" in html
+    assert 'href="/playground" aria-current="page"' in html
+    assert 'id="terminal-form"' in html
+    assert 'id="terminal-output"' in html
+    assert "Learning simulation" in html
+    assert "not a full Bash terminal" in html
+    assert "Browser-only simulation" in html
+    assert "Gemini Connected" not in html
+    assert 'id="reset-confirm"' in html
+    assert 'src="/static/js/playground.js"' in html
+    assert client.get("/static/js/playground.js").status_code == 200
+    assert client.get("/static/js/simulation/engine.js").status_code == 200
+    assert client.post("/api/playground/execute", json={"command": "pwd"}).status_code == 404
+
+
+def test_explain_page_shows_missing_key_guidance(client, monkeypatch):
+    monkeypatch.setattr(Config, "GEMINI_API_KEY", None)
+    html = client.get("/explain").get_data(as_text=True)
+    assert "Gemini API Key Needed for Live AI Explanations" in html
+    assert 'id="api-key-banner" class="alert-banner alert-warning "' in html
 
 
 def test_health_route(client):
@@ -108,6 +162,26 @@ def test_explain_api_key_missing(client, monkeypatch):
     assert data["success"] is False
     assert data["error"] == "api_key_missing"
     assert "not configured" in data["message"].lower()
+
+
+def test_explain_success_contract_is_unchanged(client):
+    explanation = CommandExplanation.model_validate({
+        "is_valid_command": True,
+        "summary": "Lists files in long format.",
+        "impact": "read",
+        "impact_explanation": "Reads directory entries without changing them.",
+        "breakdown": [{"token": "ls", "token_type": "command", "explanation": "Lists files."}],
+        "common_options": [],
+        "useful_examples": [],
+        "version_and_system_notes": "Output can vary by system.",
+        "safety_warning": None,
+    })
+    with patch("app.routes.explain_command", return_value=explanation) as mocked:
+        response = client.post("/api/explain", json={"command": "ls -l"})
+
+    assert response.status_code == 200
+    assert response.get_json() == {"success": True, "data": explanation.model_dump()}
+    mocked.assert_called_once_with("ls -l")
 
 
 def test_route_daily_quota_exhausted(client):

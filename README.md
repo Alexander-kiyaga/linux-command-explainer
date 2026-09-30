@@ -1,201 +1,93 @@
-# 🐧 Linux Command Explainer
+# LinuxLab AI
 
-A clean, modern, beginner-friendly web application that explains Linux commands in plain English using the official Google Gemini Python SDK.
+LinuxLab AI grows from the existing Linux Command Explainer. Home, Explain, and Playground are available. Task Builder, Missions, and Bash remain planned.
 
-Designed with strict safety and educational clarity:
-- **Zero Execution Policy**: User-submitted commands are analyzed purely as text and **never executed**.
-- **Prompt Injection Defense & Safe Rendering**: System instructions and input boundaries isolate untrusted text. All frontend rendering uses `textContent` and DOM element creation (never `innerHTML`).
-- **Nuanced Impact Classification**: Commands are classified into `read`, `modify`, `delete`, `depends` (flags determine outcome), or `unknown`. Read-only commands are never falsely labeled as "automatically safe".
-- **Searchable Command Dictionary**: 35 curated common Linux commands across 4 categories with real-time search, one-click copy, and one-click explanation.
-- **Honest Setup Notice**: When no API key is configured, the application displays clear setup guidance instead of presenting fake mock responses as real AI.
+## Current features
 
----
+- **Home (`/`)** introduces the learning tools and links to Explain and Playground.
+- **Explain (`/explain`)** analyzes command text with Google Gemini and returns a plain-English summary, token breakdown, impact notes, examples, version notes, and safety warnings. Submitted commands are never executed.
+- **Playground (`/playground`)** runs a bounded command interpreter against a browser-only virtual filesystem. It has no command execution endpoint and does not call a host shell, real filesystem, or network service.
+- **Quick reference** contains 35 curated commands across four categories, with search, copy, and Explain actions.
+- **API** keeps the existing `POST /api/explain`, `GET /api/commands`, and `GET /health` endpoints.
 
-## 🛠️ Technology Stack
+AI responses are rendered as text in the browser. Prompt boundaries and structured output reduce risk, but AI explanations should still be reviewed before using a command on a real system.
 
-- **Backend**: Python 3 (tested on 3.14 / 3.10+), [Flask 3.1](https://palletsprojects.com/p/flask/)
-- **AI Integration**: Official Google Gemini Python SDK (`google-genai` 2.22), [Pydantic 2.13](https://docs.pydantic.dev/) structured outputs
-- **Frontend**: Semantic HTML5, modern CSS3 (responsive flexbox/grid, accessible color contrast), minimal vanilla JavaScript (zero frontend build tools or Node.js required)
-- **Production Server**: Gunicorn 26.2 (WSGI ready for future AWS EC2 deployment)
-- **Testing**: pytest 9.1
+## Stack and structure
 
----
-
-## 📁 Project Structure
+- Python, Flask, Gunicorn
+- Google Gemini via `google-genai`, with Pydantic response validation
+- Server-rendered Jinja HTML, CSS, and vanilla JavaScript; no frontend build step
+- pytest for offline route, dictionary, mocked AI, and simulation-boundary tests
+- JavaScriptCore or Node.js as a development-only runtime for pure JavaScript engine tests; neither is needed in production
 
 ```
-linux-command-explainer/
-├── .env.example                  # Environment configuration template
-├── .gitignore                    # Excludes .env, venv/, __pycache__/, and caches
-├── requirements.txt              # Pinned, tested dependency versions
-├── wsgi.py                       # WSGI entrypoint for both local execution and Gunicorn
-├── README.md                     # Documentation and setup instructions
-├── app/
-│   ├── __init__.py               # Flask application factory (create_app)
-│   ├── config.py                 # Configuration loader and timeout converter
-│   ├── explainer.py              # Gemini API service with Pydantic structured output
-│   ├── routes.py                 # Flask route blueprints (/, /api/explain, /api/commands, /health)
-│   ├── data/
-│   │   └── commands.json         # Searchable dictionary of 35 curated Linux commands
-│   ├── static/
-│   │   ├── css/
-│   │   │   └── style.css         # Modern, responsive developer dark-theme CSS
-│   │   └── js/
-│   │       └── app.js            # Safe client-side logic using textContent
-│   └── templates/
-│       └── index.html            # Semantic HTML5 single-page application
-└── tests/
-    ├── __init__.py
-    ├── test_commands_data.py     # Verifies dictionary completeness, categories, and impacts
-    ├── test_routes.py            # Tests HTTP routes, payload validation, and missing key flow
-    ├── test_explainer_mocked.py  # Tests explainer service using MOCKED Gemini responses
-    └── test_live_gemini_optional.py # Optional test calling real Gemini API (skipped by default)
+app/
+  __init__.py              Flask application factory
+  config.py                Environment settings
+  routes.py                Pages and existing API endpoints
+  explainer.py             Gemini integration and response schema
+  data/commands.json      Curated command reference
+  templates/base.html      Shared header, navigation, and footer
+  templates/index.html     Home page
+  templates/explain.html   Existing Explain interface
+  templates/playground.html Browser-only simulated terminal
+  static/css/style.css    Shared site and Explain styling
+  static/css/playground.css Playground styling
+  static/js/explain.js    Explain and dictionary browser behavior
+  static/js/playground.js Playground UI controller
+  static/js/playground-storage.js Browser persistence adapter
+  static/js/simulation/ Pure parser, virtual filesystem, commands, and engine
+infrastructure/aws/       Tracked Terraform and Ansible configuration
+requirements.txt          Pinned Python dependencies
+tests/                    Python and JavaScript tests plus optional live Gemini test
+wsgi.py                   Local and Gunicorn entry point
 ```
 
----
+Explain loads its browser script only on `/explain`. Playground loads its own modules only on `/playground`. The simulator is independent of the DOM, browser storage, Flask, and Gemini so later learning tools can reuse it.
 
-## 🚀 Local Setup & Installation
+## Local setup
 
-### 1. Prerequisites
-- Python 3.10 or higher.
-- `pip` and `venv`.
+Use Python 3.10 or newer. From the project directory:
 
-### 2. Create and Activate a Virtual Environment
 ```bash
-# In the project directory:
 python3 -m venv venv
-
-# On macOS / Linux:
 source venv/bin/activate
-```
-
-### 3. Install Dependencies
-```bash
 pip install -r requirements.txt
+cp .env.example .env
 ```
 
----
-
-## 🔑 Configuring Your Gemini API Key Privately
-
-1. **Get a Gemini API Key**:
-   Create a free API key at [Google AI Studio](https://aistudio.google.com/app/apikey).
-
-2. **Create Your `.env` File**:
-   Copy the provided `.env.example` template:
-   ```bash
-   cp .env.example .env
-   ```
-
-3. **Add Your Key**:
-   Open `.env` in your editor and insert your key:
-   ```ini
-   GEMINI_API_KEY=AIzaSyYourActualKeyHere
-   GEMINI_MODEL=gemini-2.5-flash
-   API_TIMEOUT_SECONDS=15
-   MAX_INPUT_LENGTH=500
-   PORT=5000
-   FLASK_DEBUG=False
-   ```
-
-> [!IMPORTANT]
-> Your `.env` file is listed in `.gitignore` and must **never** be committed to version control or shared publicly.
-
----
-
-## ▶️ Running the Application Locally
-
-Start the local development server bound to `127.0.0.1`:
+Set `GEMINI_API_KEY` in `.env`, then start the app:
 
 ```bash
 python wsgi.py
 ```
 
-You will see the startup banner:
-```
-============================================================
-  🐧 Linux Command Explainer - Development Server
-  Local Address: http://127.0.0.1:5000
-  Gemini Model:  gemini-2.5-flash
-  API Key:       Configured
-============================================================
- * Running on http://127.0.0.1:5000
-```
+Open `http://127.0.0.1:5000/` for Home, `/explain` for Explain, or `/playground` for Playground. Playground works without an API key. Without a key, Explain displays setup guidance instead of fabricated AI output. Keep `.env` private; it is ignored by Git.
 
-Open your browser and navigate to:
-```
-http://127.0.0.1:5000
-```
+## Playground V1 scope
 
----
+The available commands are `pwd`, `ls`, `cd`, `mkdir`, `touch`, `cat`, `echo`, `cp`, `mv`, `rm`, `head`, `tail`, `grep`, `find`, `chmod`, `whoami`, `clear`, and the simulator's `help` command. Supported options are `ls -a -l`, `mkdir -p`, `echo -n`, `cp -r`, `rm -r -f`, `head/tail -n N`, `grep -i -n -F`, `find -name PATTERN -type f|d`, and three-digit octal `chmod`. Combined short flags and `--` work where applicable. `find -name` supports `*` and `?` inside a quoted pattern.
 
-## 🧪 Running Automated Tests
+The parser accepts one command line with simple quotes, escaped characters, and one virtual output redirect (`>` or `>>`). It rejects pipes, input redirects, multiple commands, general shell wildcard expansion, variables, command substitution, regex `grep`, networking, and real Bash. Results model a deliberately limited teaching subset of Linux; they are not a complete or exact shell implementation. Files, directories, contents, modes, and time are virtual. Changes and a bounded command history are saved in this browser, and Reset restores the starter snapshot.
 
-The test suite thoroughly covers input validation, dictionary integrity, HTTP routes, and mocked AI responses without requiring an active API key.
+V1 treats each command as one atomic virtual change: errors leave the prior snapshot intact, and output redirects write only after a successful command. A real shell can have partial effects and handles redirects differently. Permission checks use one virtual user and basic owner/group/other bits; ACLs, special bits, `sudo`, and advanced POSIX behavior are outside V1. `cp` and `mv` accept one source and destination, and directory merging is not supported. The terminal transcript is cleared on reload, while files, working directory, and the last 100 commands persist.
 
-### Run Local Unit & Mocked Tests:
+## Tests
+
+Run the offline suite with:
+
 ```bash
-pytest -v
+pytest -q
 ```
 
-All 34 core tests will pass in < 1 second.
+The live Gemini test is skipped by default. To opt in, set `RUN_REAL_GEMINI_TEST=1` and configure a real API key before running `tests/test_live_gemini_optional.py`.
 
-### Optional: Test Against the Real Gemini API
-To verify connectivity with your actual configured key:
-```bash
-RUN_REAL_GEMINI_TEST=1 pytest tests/test_live_gemini_optional.py -v
-```
-*(This is skipped by default so tests run fast, offline, and without consuming API quota.)*
+Run the pure JavaScript tests with either a development-only Node.js runtime (`npm run test:js`) or macOS JavaScriptCore (`/System/Library/Frameworks/JavaScriptCore.framework/Versions/A/Helpers/jsc -m tests/js/run.mjs`). There are no npm production dependencies or frontend build steps.
 
----
+## Deployment configuration
 
-## 💡 Key Features & Architectural Decisions
+`infrastructure/aws/` contains Terraform for an Amazon Linux EC2 instance and Ansible configuration for Nginx, Gunicorn, systemd, and a deployment health check. A separate `linux-explainer-aws` working directory may contain copies of these files and local Terraform state. The checked-in configuration currently serves HTTP on port 80; HTTPS is not configured. Updating or deploying AWS is outside this phase.
 
-### 1. Zero Command Execution
-- No `subprocess`, `os.system`, or shell calls exist anywhere in the application.
-- All command analysis is purely natural-language understanding through Gemini.
+## Safety boundary
 
-### 2. Prompt Injection Mitigation & Safe Output
-- User input is encapsulated inside `<UNTRUSTED_COMMAND>` tags with system instructions explicitly stating that text within tags must be analyzed as code, never obeyed as instructions.
-- Length is capped at 500 characters on both client and server.
-- The frontend uses `node.textContent` and DOM node construction exclusively. **No dynamic string concatenation into `innerHTML` is performed.**
-
-### 3. Nuanced Impact Classification
-Commands are not simplified into "safe" vs "dangerous":
-- **`read`**: Reads or queries information (e.g. `ls -lah`, `cat /etc/os-release`). *Note: Reading commands are NOT labeled as automatically safe, because viewing sensitive files (e.g. credentials) or dumping infinite streams (`cat /dev/urandom`) poses real security and system risks.*
-- **`modify`**: Modifies files, directories, permissions, or system state (e.g. `mkdir -p`, `cp -r`, `chmod 755`).
-- **`delete`**: Permanently removes files, unlinks inodes, or terminates processes (e.g. `rm -rf`, `kill -9`).
-- **`depends`**: Outcome depends heavily on options or arguments (e.g. `sed` without `-i` streams to stdout, while `sed -i` alters files in place).
-- **`unknown`**: Ambiguous or custom syntax.
-
-### 4. Verified SDK Integration, Retries & Timeout Units
-- Uses the official Google GenAI Python SDK (`google-genai` 2.22.0).
-- **Exact Attempt Policy**: Client initialized with `retry_options=None`, which the SDK executes as `tenacity.stop_after_attempt(1)`. No automatic retries occur on daily quota exhaustion or errors, preventing stacked retries.
-- **Thinking Configuration**: For Gemini 3 models (e.g. `gemini-3.6-flash`), `thinking_level=ThinkingLevel.LOW` is configured as verified in official documentation, reducing latency and reasoning token volume without altering the model's fixed daily quota.
-- **Configurable Output Limit**: `MAX_OUTPUT_TOKENS` (default: 1500) caps output bloat. Truncated responses are caught gracefully and reported with actionable guidance without retrying.
-- **Timeout Units**: `API_TIMEOUT_SECONDS` (default: 15s) is converted to milliseconds (`15,000 ms`) for `types.HttpOptions(timeout=...)`.
-
-### 5. Submission Lock & Duplicate Prevention
-- A client-side submission lock (`isSubmitting`) disables the input box, Explain button, quick example chips, and dictionary cards while a request is in flight. This prevents redundant duplicate requests during slow responses or transient server delays.
-
-### 6. Granular Error Classification
-- **Daily Quota Exhaustion (429)**: Specifically detects `GenerateRequestsPerDay` metrics, extracts reported `quotaValue` when available, states that Google's daily quota schedule typically resets at midnight Pacific Time, and warns that a short `retryDelay` will not resolve a daily limit.
-- **Per-Minute Rate Limits (429)**: Differentiates short-term burst limits, advising users to pause 15–30 seconds.
-- **Unknown Quota / Rate Limit (429)**: Provides a fallback when the exact metric cannot be determined.
-- **Temporary Server Overload (503)**: Explains temporary Google server traffic spikes with a polite retry prompt.
-- **Timeouts & Deadlines (504 / 408)**: Maps 504 `DEADLINE_EXCEEDED` and client timeouts to clear timeout messages.
-- **Safe Duration Logging**: Measures live latency using `time.perf_counter()` and logs execution times without exposing API keys or credentials.
-
----
-
-## ☁️ Future AWS EC2 Deployment Guide (Preview)
-
-When deploying to AWS EC2:
-
-1. **WSGI Server**: Run Gunicorn with multiple workers:
-   ```bash
-   gunicorn -w 4 -b 127.0.0.1:5000 wsgi:app
-   ```
-2. **Reverse Proxy**: Place Nginx in front of Gunicorn to handle HTTPS (Let's Encrypt), static file caching, and rate limiting.
-3. **Process Management**: Run Gunicorn under `systemd` (`/etc/systemd/system/explainer.service`).
-4. **Environment**: Keep `.env` on the EC2 instance with restricted permissions (`chmod 600 .env`).
+Explain treats commands as text and does not call a shell. Playground commands are parsed by a fixed browser-side registry and only mutate virtual state. The engine has no DOM, network, host filesystem, subprocess, or shell capability. Browser storage holds serialized virtual state; command handlers cannot access it. Future Bash and Missions can share the engine but are not implemented in Playground V1.

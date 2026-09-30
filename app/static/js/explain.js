@@ -1,10 +1,9 @@
 /**
- * Linux Command Explainer - Frontend Application Logic
+ * LinuxLab AI Explain - frontend behavior for /explain
  *
  * CRITICAL SECURITY & STABILITY PRINCIPLES:
- * 1. Safe DOM manipulation: Untrusted user input and AI responses are ALWAYS
- *    rendered using `textContent` or DOM element creation. Never use `innerHTML`
- *    for dynamic content.
+ * 1. Untrusted user input and AI responses are rendered using `textContent`
+ *    or DOM element creation. `innerHTML` is used only to clear containers.
  * 2. Commands are purely explained and NEVER executed.
  * 3. Read-only commands are NOT automatically labelled as "safe".
  * 4. Strict submission locking: Prevent duplicate in-flight requests.
@@ -235,7 +234,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // -------------------------------------------------------------------------
-  // Safe Result Rendering (Strictly textContent, zero innerHTML)
+  // Safe Result Rendering (dynamic text uses textContent)
   // -------------------------------------------------------------------------
   function renderExplanation(commandText, data) {
     // 1. Command Text

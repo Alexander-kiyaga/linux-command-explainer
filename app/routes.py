@@ -34,12 +34,33 @@ def load_commands_data():
 
 @bp.route("/")
 def index():
-    """Render the single-page web interface."""
+    """Render the LinuxLab AI home page."""
     return render_template(
         "index.html",
+        active_page="home",
+        api_key_configured=Config.is_api_key_configured(),
+    )
+
+
+@bp.route("/explain")
+def explain_page():
+    """Render the existing command explainer within the shared site layout."""
+    return render_template(
+        "explain.html",
+        active_page="explain",
         api_key_configured=Config.is_api_key_configured(),
         gemini_model=Config.GEMINI_MODEL,
         max_input_length=Config.MAX_INPUT_LENGTH,
+    )
+
+
+@bp.route("/playground")
+def playground_page():
+    """Render the browser-only learning simulation."""
+    return render_template(
+        "playground.html",
+        active_page="playground",
+        api_key_configured=Config.is_api_key_configured(),
     )
 
 

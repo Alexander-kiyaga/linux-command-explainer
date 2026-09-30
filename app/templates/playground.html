@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Playground | LinuxLab AI{% endblock %}
+{% block description %}Practice supported Linux commands in a safe, browser-only virtual filesystem.{% endblock %}
+{% block styles %}<link rel="stylesheet" href="{{ url_for('static', filename='css/playground.css') }}">{% endblock %}
+{% block main %}
+<section class="playground-intro" aria-labelledby="playground-title">
+  <span class="home-eyebrow">Playground V1</span>
+  <h2 id="playground-title">A terminal for learning, not for running Linux.</h2>
+  <p>Practice a bounded set of commands against a virtual filesystem. Commands run only inside this browser simulation. They never reach your computer, the AWS server, a shell, real files, or the network.</p>
+</section>
+
+<section class="simulation-notice" role="note" aria-label="Simulation limits">
+  <strong>Learning simulation</strong>
+  <span>Results model a teaching subset of Linux. Unsupported commands and shell syntax are rejected; this is not a full Bash terminal.</span>
+</section>
+
+<div class="playground-layout">
+  <section class="playground-terminal" aria-label="Simulated terminal">
+    <div class="playground-terminal-header">
+      <div><span class="terminal-indicator" aria-hidden="true"></span><strong>linuxlab://virtual</strong><span class="terminal-header-subtitle">Browser only</span></div>
+      <button type="button" id="reset-session" class="terminal-reset">Reset filesystem</button>
+    </div>
+    <div id="reset-confirm" class="reset-confirm hidden" role="group" aria-label="Confirm virtual filesystem reset">
+      <p>Reset the virtual filesystem and remove this browser's Playground history?</p>
+      <div>
+        <button type="button" id="confirm-reset" class="terminal-reset reset-danger">Reset practice</button>
+        <button type="button" id="cancel-reset" class="terminal-reset">Cancel</button>
+      </div>
+    </div>
+    <div id="terminal-output" class="terminal-output" role="log" aria-live="polite" aria-relevant="additions text"></div>
+    <form id="terminal-form" class="terminal-form" autocomplete="off">
+      <label class="sr-only" for="terminal-input">Enter a simulated command</label>
+      <span id="terminal-prompt" class="terminal-prompt" aria-hidden="true"></span>
+      <input id="terminal-input" name="command" type="text" maxlength="2048" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="Enter a simulated command">
+      <button type="submit" class="terminal-run">Run</button>
+    </form>
+  </section>
+
+  <aside class="playground-guide" aria-labelledby="playground-guide-title">
+    <h3 id="playground-guide-title">Get started</h3>
+    <p>Try a command below or type <code>help</code> to see the exact V1 scope.</p>
+    <div class="playground-examples">
+      <button type="button" data-command="pwd">pwd</button>
+      <button type="button" data-command="ls -la">ls -la</button>
+      <button type="button" data-command="cat README.txt">cat README.txt</button>
+      <button type="button" data-command="find . -name '*.txt'">find . -name '*.txt'</button>
+      <button type="button" data-command="echo 'hello' > hello.txt">echo 'hello' &gt; hello.txt</button>
+    </div>
+    <div class="guide-divider"></div>
+    <h3>Session controls</h3>
+    <ul>
+      <li><kbd>↑</kbd> and <kbd>↓</kbd> recall commands.</li>
+      <li><code>clear</code> or <kbd>Ctrl</kbd> + <kbd>L</kbd> clears the screen, not your files.</li>
+      <li>Reset restores the starter files and removes saved practice changes.</li>
+    </ul>
+    <p class="guide-limits">Pipes, general wildcards, variables, command substitution, multiple commands, networking, and real Bash execution are not supported.</p>
+  </aside>
+</div>
+<p id="playground-status" class="playground-status" role="status" aria-live="polite"></p>
+{% endblock %}
+{% block scripts %}<script type="module" src="{{ url_for('static', filename='js/playground.js') }}"></script>{% endblock %}

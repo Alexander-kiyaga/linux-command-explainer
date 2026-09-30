@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="{% block description %}LinuxLab AI helps you learn Linux commands with clear explanations and safe practice tools.{% endblock %}">
+  <title>{% block title %}LinuxLab AI{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  {% block styles %}{% endblock %}
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="app-container">
+    <header class="app-header">
+      <div class="header-content">
+        <div class="brand">
+          <span class="brand-icon" aria-hidden="true">🐧</span>
+          <div class="brand-text">
+            <h1>LinuxLab AI</h1>
+            <p class="tagline">Learn Linux with clear explanations and safe practice.</p>
+          </div>
+        </div>
+        <div class="header-badges">
+          {% if active_page == 'playground' %}
+          <span class="badge badge-safety" title="Playground uses a virtual filesystem in your browser">🧪 Browser-only simulation</span>
+          {% else %}
+          <span class="badge badge-safety" title="Explain analyzes commands as text and never executes them">
+            🔒 Explain Never Executes Code
+          </span>
+          <span class="badge {% if api_key_configured %}badge-success{% else %}badge-warning{% endif %}" id="api-status-badge">
+            {% if api_key_configured %}● Gemini Connected{% else %}⚠ API Key Missing{% endif %}
+          </span>
+          {% endif %}
+        </div>
+      </div>
+      <nav class="site-nav" aria-label="Main navigation">
+        <a href="{{ url_for('main.index') }}" {% if active_page == 'home' %}aria-current="page"{% endif %}>Home</a>
+        <a href="{{ url_for('main.explain_page') }}" {% if active_page == 'explain' %}aria-current="page"{% endif %}>Explain</a>
+        <a href="{{ url_for('main.playground_page') }}" {% if active_page == 'playground' %}aria-current="page"{% endif %}>Playground</a>
+      </nav>
+    </header>
+
+    <main id="main-content" class="app-main">
+      {% block main %}{% endblock %}
+    </main>
+
+    <footer class="app-footer">
+      <div class="footer-content">
+        <p><strong>LinuxLab AI</strong> — Learn what Linux commands do before using them.</p>
+        <p class="footer-note">Explain analyzes commands as text and never executes them on the host system. Always review commands before running them on a real computer or server.</p>
+      </div>
+    </footer>
+  </div>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

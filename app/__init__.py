@@ -3,7 +3,7 @@ from app.config import Config
 
 
 def create_app(test_config=None):
-    """Application factory for Linux Command Explainer."""
+    """Application factory for LinuxLab AI."""
     app = Flask(__name__, template_folder="templates", static_folder="static")
 
     if test_config is not None:
