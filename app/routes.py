@@ -4,6 +4,7 @@ from flask import Blueprint, jsonify, render_template, request
 
 from app.config import Config
 from app.task_builder import generate_task_plan
+from app.bash_explainer import explain_script
 from app.explainer import (
     GeminiAppError,
     ApiKeyMissingError,
@@ -82,6 +83,37 @@ def task_builder_page():
         "task_builder.html", active_page="task_builder",
         api_key_configured=Config.is_api_key_configured(),
     )
+
+
+@bp.route("/bash")
+def bash_page():
+    """Render the browser-only Bash teaching simulation."""
+    return render_template(
+        "bash.html", active_page="bash",
+        api_key_configured=Config.is_api_key_configured(),
+    )
+
+
+@bp.route("/api/bash/explain", methods=["POST"])
+def bash_explain():
+    """Explain script text with Gemini. This route has no script execution path."""
+    if not request.is_json or (request.content_length is not None and request.content_length > 10000):
+        return jsonify({"success": False, "error": "invalid_request", "message": "Provide a small JSON body with a script field."}), 400
+    if len(request.get_data(cache=True)) > 10000:
+        return jsonify({"success": False, "error": "invalid_request", "message": "Request body is too large."}), 400
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict) or set(payload) != {"script"} or not isinstance(payload["script"], str):
+        return jsonify({"success": False, "error": "invalid_request", "message": "Provide a text script field."}), 400
+    try:
+        cleaned, explanation = explain_script(payload["script"])
+        return jsonify({"success": True, "data": {"script": cleaned, **explanation.model_dump()}}), 200
+    except GeminiAppError as error:
+        response = {"success": False, "error": error.error_code, "message": error.message}
+        if error.details:
+            response["details"] = error.details
+        return jsonify(response), error.http_status
+    except Exception:
+        return jsonify({"success": False, "error": "internal_error", "message": "Script explanation is unavailable right now."}), 500
 
 
 @bp.route("/api/task-builder/plan", methods=["POST"])

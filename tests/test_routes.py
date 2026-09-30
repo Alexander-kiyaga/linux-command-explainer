@@ -38,8 +38,8 @@ def test_index_route(client):
     assert "Playground" in html
     assert "Missions" in html
     assert "Bash" in html
-    assert "Explain, Task Builder, Playground and Missions are available now." in html
-    assert "Bash is planned for a later phase." in html
+    assert "Explain, Task Builder, Playground, Missions and Bash are available now." in html
+    assert 'href="/bash"' in html
     assert 'id="explain-form"' not in html
 
 

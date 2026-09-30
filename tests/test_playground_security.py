@@ -50,3 +50,30 @@ def test_compatibility_modules_cannot_dispatch_commands():
         assert "commands/files.js" not in source
         assert "commands/basic.js" not in source
         assert "commands/text.js" not in source
+
+
+def test_bash_interpreter_core_has_no_host_network_dom_or_dynamic_execution():
+    bash_dir = SIMULATION.parent / "bash"
+    core_names = ("errors.js", "limits.js", "lexer.js", "parser.js", "expand.js", "glob.js", "interpreter.js", "worker.js")
+    for name in core_names:
+        source = (bash_dir / name).read_text(encoding="utf-8")
+        for pattern in FORBIDDEN + (r"\bWebAssembly\b", r"\bnew\s+Function\b", r"\bchild_process\b", r"\bnode:fs\b"):
+            assert not re.search(pattern, source), f"Forbidden capability {pattern} in {name}"
+        for imported in re.findall(r'from\s+["\']([^"\']+)["\']', source):
+            assert imported.startswith("."), f"Nonlocal import {imported} in {name}"
+    interpreter = (bash_dir / "interpreter.js").read_text(encoding="utf-8")
+    assert 'from "../simulation/engine.js"' in interpreter
+    assert "executeParsedCommand" in interpreter
+    assert 'from "../simulation/parser.js"' not in interpreter
+
+
+def test_bash_run_path_has_no_flask_execution_request():
+    controller = (SIMULATION.parent / "bash.js").read_text(encoding="utf-8")
+    assert controller.count("fetch(") == 1
+    assert 'fetch("/api/bash/explain"' in controller
+    assert "/api/bash/run" not in controller
+    worker = (SIMULATION.parent / "bash" / "worker.js").read_text(encoding="utf-8")
+    assert "fetch(" not in worker
+    service = (SIMULATION.parent.parent.parent / "bash_explainer.py").read_text(encoding="utf-8")
+    for forbidden in ("subprocess", "os.system", "/bin/bash", "Popen(", "exec(", "eval("):
+        assert forbidden not in service

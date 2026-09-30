@@ -43,6 +43,12 @@ class Config:
     except ValueError:
         TASK_BUILDER_MAX_OUTPUT_TOKENS = 3000
 
+    # Separate bound for line-by-line Bash explanations.
+    try:
+        BASH_MAX_OUTPUT_TOKENS = int(os.getenv("BASH_MAX_OUTPUT_TOKENS", "4000"))
+    except ValueError:
+        BASH_MAX_OUTPUT_TOKENS = 4000
+
     # Server settings
     try:
         PORT = int(os.getenv("PORT", "5000"))
