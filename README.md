@@ -27,6 +27,7 @@ AI responses are rendered as text in the browser. Prompt boundaries and structur
 app/
   __init__.py              Flask application factory
   config.py                Environment settings
+  api_security.py          Shared AI request and public-error boundary
   routes.py                Pages and existing API endpoints
   explainer.py             Explain Gemini integration and response schema
   task_builder.py          Separate Gemini task-plan schema, prompt, and service
@@ -128,6 +129,10 @@ Run the pure JavaScript tests with either a development-only Node.js runtime (`n
 ## Deployment configuration
 
 `infrastructure/aws/` contains Terraform for an Amazon Linux EC2 instance and Ansible configuration for Nginx, Gunicorn, systemd, and a deployment health check. A separate `linux-explainer-aws` working directory may contain copies of these files and local Terraform state. The checked-in configuration currently serves HTTP on port 80; HTTPS is not configured. Updating or deploying AWS is outside this phase.
+
+The Flask application caps all request bodies at 16 KiB and validates the JSON shape and input length of each Gemini-backed endpoint before calling Gemini. Operational settings fail at startup when outside the ranges shown in `.env.example`. Public AI errors use fixed messages; server logs contain error categories and types, without prompts or provider response bodies. HTML, API, and static responses include a same-origin CSP, `nosniff`, a no-referrer policy, and frame denial. The CSP permits same-origin JavaScript modules and the Bash module worker. HSTS remains off until HTTPS is configured.
+
+The tracked Ansible Nginx configuration limits the three Gemini POST endpoints together to **6 requests per minute per client IP**, with a burst of 2, and **1 concurrent AI request globally**. Limits return JSON with HTTP 429 and `Retry-After: 20`; page and static routes are outside this policy. Tune `ai_requests_per_minute` (1–60), `ai_burst` (0–10), and `ai_max_inflight` (1–2) in `infrastructure/aws/deploy.yml` only after observing traffic. These controls apply through the production Nginx proxy; the local Flask development server does not rate-limit requests. Keep Gunicorn bound to loopback behind Nginx so public traffic cannot bypass those controls.
 
 ## Safety boundary
 

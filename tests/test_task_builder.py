@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app import create_app
+from app.api_security import PUBLIC_ERRORS
 from app.config import Config
 from app.explainer import (
     ApiKeyMissingError, DailyQuotaExhaustedError, InputValidationError,
@@ -130,7 +131,7 @@ def test_plan_route_input_and_mocked_success(client):
         response = client.post("/api/task-builder/plan", json=payload)
         assert response.status_code == 400
     response = client.post("/api/task-builder/plan", data="{" + "x" * 5000, content_type="application/json")
-    assert response.status_code == 400
+    assert response.status_code == 413
     with patch("app.routes.generate_task_plan", return_value=("Make a website file", TaskPlan.model_validate(VALID_PLAN))) as mocked:
         response = client.post("/api/task-builder/plan", json={"task": "Make a website file"})
     assert response.status_code == 200
@@ -157,4 +158,4 @@ def test_plan_route_service_errors(client, error, status, code):
     assert response.status_code == status
     assert response.json["success"] is False
     assert response.json["error"] == code
-    assert response.json["message"] == error.message
+    assert response.json["message"] == PUBLIC_ERRORS[code][1]

@@ -1,25 +1,12 @@
 import json
 from pathlib import Path
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, jsonify, render_template
 
+from app.api_security import public_gemini_error, public_internal_error, read_text_request
 from app.config import Config
 from app.task_builder import generate_task_plan
 from app.bash_explainer import explain_script
-from app.explainer import (
-    GeminiAppError,
-    ApiKeyMissingError,
-    ApiKeyInvalidError,
-    DailyQuotaExhaustedError,
-    RateLimitMinuteError,
-    QuotaRateLimitUnknownError,
-    ServiceOverloadedError,
-    ExplanationTimeoutError,
-    StructuredOutputParseError,
-    ClientPermissionError,
-    InputValidationError,
-    ExplanationServiceError,
-    explain_command,
-)
+from app.explainer import GeminiAppError, explain_command
 
 bp = Blueprint("main", __name__)
 
@@ -97,45 +84,31 @@ def bash_page():
 @bp.route("/api/bash/explain", methods=["POST"])
 def bash_explain():
     """Explain script text with Gemini. This route has no script execution path."""
-    if not request.is_json or (request.content_length is not None and request.content_length > 10000):
-        return jsonify({"success": False, "error": "invalid_request", "message": "Provide a small JSON body with a script field."}), 400
-    if len(request.get_data(cache=True)) > 10000:
-        return jsonify({"success": False, "error": "invalid_request", "message": "Request body is too large."}), 400
-    payload = request.get_json(silent=True)
-    if not isinstance(payload, dict) or set(payload) != {"script"} or not isinstance(payload["script"], str):
-        return jsonify({"success": False, "error": "invalid_request", "message": "Provide a text script field."}), 400
+    script, error = read_text_request("script", 10000)
+    if error:
+        return error
     try:
-        cleaned, explanation = explain_script(payload["script"])
+        cleaned, explanation = explain_script(script)
         return jsonify({"success": True, "data": {"script": cleaned, **explanation.model_dump()}}), 200
-    except GeminiAppError as error:
-        response = {"success": False, "error": error.error_code, "message": error.message}
-        if error.details:
-            response["details"] = error.details
-        return jsonify(response), error.http_status
-    except Exception:
-        return jsonify({"success": False, "error": "internal_error", "message": "Script explanation is unavailable right now."}), 500
+    except GeminiAppError as exc:
+        return public_gemini_error(exc)
+    except Exception as exc:
+        return public_internal_error(exc)
 
 
 @bp.route("/api/task-builder/plan", methods=["POST"])
 def task_builder_plan():
     """Generate a plan as text only. No command is executed or checked here."""
-    if not request.is_json or (request.content_length is not None and request.content_length > 4096):
-        return jsonify({"success": False, "error": "invalid_request", "message": "Provide a small JSON body with a task field."}), 400
-    if len(request.get_data(cache=True)) > 4096:
-        return jsonify({"success": False, "error": "invalid_request", "message": "Request body is too large."}), 400
-    payload = request.get_json(silent=True)
-    if not isinstance(payload, dict) or set(payload) != {"task"} or not isinstance(payload["task"], str):
-        return jsonify({"success": False, "error": "invalid_request", "message": "Provide a text task field."}), 400
+    task, error = read_text_request("task", 4096)
+    if error:
+        return error
     try:
-        cleaned, plan = generate_task_plan(payload["task"])
+        cleaned, plan = generate_task_plan(task)
         return jsonify({"success": True, "data": {"task": cleaned, "plan": plan.model_dump()}}), 200
-    except GeminiAppError as error:
-        response = {"success": False, "error": error.error_code, "message": error.message}
-        if error.details:
-            response["details"] = error.details
-        return jsonify(response), error.http_status
-    except Exception:
-        return jsonify({"success": False, "error": "internal_error", "message": "Task planning is unavailable right now."}), 500
+    except GeminiAppError as exc:
+        return public_gemini_error(exc)
+    except Exception as exc:
+        return public_internal_error(exc)
 
 
 @bp.route("/api/commands", methods=["GET"])
@@ -155,46 +128,21 @@ def explain():
     Explain a user-submitted Linux command.
     NEVER executes the submitted command.
     """
-    if not request.is_json:
-        return jsonify({
-            "success": False,
-            "error": "invalid_request",
-            "message": "Request body must be valid JSON with a 'command' field.",
-        }), 400
-
-    payload = request.get_json(silent=True) or {}
-    command_text = payload.get("command")
-
-    if command_text is None:
-        return jsonify({
-            "success": False,
-            "error": "invalid_request",
-            "message": "Missing 'command' field in request body.",
-        }), 400
+    command_text, error = read_text_request("command", 10000, exact_keys=False)
+    if error:
+        return error
 
     try:
-        explanation = explain_command(str(command_text))
+        explanation = explain_command(command_text)
         return jsonify({
             "success": True,
             "data": explanation.model_dump(),
         }), 200
 
-    except GeminiAppError as e:
-        response_payload = {
-            "success": False,
-            "error": e.error_code,
-            "message": e.message,
-        }
-        if e.details:
-            response_payload["details"] = e.details
-        return jsonify(response_payload), e.http_status
-
-    except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": "internal_error",
-            "message": f"Unexpected server error: {e}",
-        }), 500
+    except GeminiAppError as exc:
+        return public_gemini_error(exc)
+    except Exception as exc:
+        return public_internal_error(exc)
 
 
 @bp.route("/health", methods=["GET"])

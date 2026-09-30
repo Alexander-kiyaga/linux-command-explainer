@@ -247,7 +247,9 @@ def classify_gemini_error(err: Exception) -> GeminiAppError:
                     violations = item.get("violations", [])
                     for violation in violations:
                         if isinstance(violation, dict) and "quotaValue" in violation:
-                            quota_value = str(violation["quotaValue"])
+                            candidate = str(violation["quotaValue"])
+                            if candidate.isascii() and candidate.isdecimal() and len(candidate) <= 6:
+                                quota_value = candidate
                             break
 
         # Check for daily request quota exhaustion
@@ -302,19 +304,19 @@ def classify_gemini_error(err: Exception) -> GeminiAppError:
     # 5. Permission / Region / Project Disabled (HTTP 403)
     if code == 403 or "permission_denied" in status.lower():
         return ClientPermissionError(
-            f"Google API permission denied: {message}"
+            "The AI service is unavailable due to a configuration issue."
         )
 
     # 6. Bad Request / Client Error (HTTP 400)
     if code == 400:
         return GeminiAppError(
-            message=f"Google API client error: {message}",
+            message="The AI request could not be completed.",
             error_code="client_error",
             http_status=400
         )
 
     # 7. Generic Fallback
-    return ExplanationServiceError(f"AI explanation service error: {message}")
+    return ExplanationServiceError("The AI service is unavailable.")
 
 
 # ---------------------------------------------------------------------------
@@ -418,9 +420,9 @@ def explain_command(command_text: str) -> CommandExplanation:
     except (ValidationError, json.JSONDecodeError) as e:
         duration = time.perf_counter() - start_time
         logger.warning(
-            "Gemini response could not be parsed as structured JSON after %.2fs [model=%s, MAX_OUTPUT_TOKENS=%d]: %s. "
+            "Gemini response could not be parsed as structured JSON after %.2fs [model=%s, MAX_OUTPUT_TOKENS=%d, error_type=%s]. "
             "Technical advice: The output may have been truncated by token limits.",
-            duration, Config.GEMINI_MODEL, Config.MAX_OUTPUT_TOKENS, e
+            duration, Config.GEMINI_MODEL, Config.MAX_OUTPUT_TOKENS, type(e).__name__
         )
         raise StructuredOutputParseError(
             "The explanation was cut short or could not be displayed completely. "
@@ -430,8 +432,8 @@ def explain_command(command_text: str) -> CommandExplanation:
     except GeminiAppError as e:
         duration = time.perf_counter() - start_time
         logger.warning(
-            "Gemini request failed after %.2fs [model=%s, error_code=%s]: %s",
-            duration, Config.GEMINI_MODEL, e.error_code, e.message
+            "Gemini request failed after %.2fs [model=%s, error_code=%s, type=%s]",
+            duration, Config.GEMINI_MODEL, e.error_code, type(e).__name__
         )
         raise
 
@@ -439,7 +441,7 @@ def explain_command(command_text: str) -> CommandExplanation:
         duration = time.perf_counter() - start_time
         classified = classify_gemini_error(e)
         logger.warning(
-            "Gemini request failed after %.2fs [model=%s, error_code=%s]: %s",
-            duration, Config.GEMINI_MODEL, classified.error_code, classified.message
+            "Gemini request failed after %.2fs [model=%s, error_code=%s, type=%s]",
+            duration, Config.GEMINI_MODEL, classified.error_code, type(e).__name__
         )
         raise classified

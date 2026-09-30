@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app import create_app
+from app.api_security import PUBLIC_ERRORS
 from app.bash_explainer import BashExplanation, explain_script, sanitize_script
 from app.config import Config
 from app.explainer import (
@@ -114,7 +115,7 @@ def test_bash_page_and_api(client):
     assert 'src="/static/js/bash.js"' in html
     for payload in (None, {}, {"script": 3}, {"script": "x", "extra": 1}):
         assert client.post("/api/bash/explain", json=payload).status_code == 400
-    assert client.post("/api/bash/explain", data="{" + "x" * 10001, content_type="application/json").status_code == 400
+    assert client.post("/api/bash/explain", data="{" + "x" * 10001, content_type="application/json").status_code == 413
     with patch("app.routes.explain_script", return_value=(SCRIPT, BashExplanation.model_validate(VALID_EXPLANATION))) as mocked:
         response = client.post("/api/bash/explain", json={"script": SCRIPT})
     assert response.status_code == 200
@@ -134,3 +135,4 @@ def test_bash_api_classified_errors(client, error, status, code):
         response = client.post("/api/bash/explain", json={"script": SCRIPT})
     assert response.status_code == status
     assert response.json["error"] == code
+    assert response.json["message"] == PUBLIC_ERRORS[code][1]
