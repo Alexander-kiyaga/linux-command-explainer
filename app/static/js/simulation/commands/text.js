@@ -1,7 +1,8 @@
 import { fail } from "../errors.js";
 import { listChildren, readFile, stat } from "../filesystem.js";
 import { baseName } from "../paths.js";
-import { expectCount, parseFlags, pathArg } from "./options.js";
+import { pathArg } from "./options.js";
+import { parseCountAndFile, parseFind, parseGrep } from "../syntax.js";
 
 function linesOf(content) {
   if (!content) return [];
@@ -14,42 +15,20 @@ function lineChunks(content) {
   return content.match(/[^\n]*\n|[^\n]+$/g) || [];
 }
 
-function countAndFile(command, args) {
-  let count = 10;
-  let operands = args;
-  if (args[0]?.value === "--") {
-    operands = args.slice(1);
-  } else if (args[0]?.value === "-n") {
-    if (!args[1] || !/^[0-9]+$/.test(args[1].value)) fail(`${command}: -n needs a non-negative number`, 2);
-    count = Number(args[1].value);
-    if (!Number.isSafeInteger(count) || count > 10000) fail(`${command}: line count exceeds simulation limit`, 2);
-    operands = args[2]?.value === "--" ? args.slice(3) : args.slice(2);
-  } else if (args[0]?.value.startsWith("-")) {
-    fail(`${command}: unsupported option ${args[0].value}`, 2);
-  }
-  expectCount(command, operands, 1);
-  return { count, file: operands[0] };
-}
-
 export function head(session, args) {
-  const { count, file } = countAndFile("head", args);
+  const { count, file } = parseCountAndFile("head", args);
   const chunks = lineChunks(readFile(session, pathArg(session, file))).slice(0, count);
   return { stdout: chunks.join("") };
 }
 
 export function tail(session, args) {
-  const { count, file } = countAndFile("tail", args);
+  const { count, file } = parseCountAndFile("tail", args);
   const chunks = count === 0 ? [] : lineChunks(readFile(session, pathArg(session, file))).slice(-count);
   return { stdout: chunks.join("") };
 }
 
 export function grep(session, args) {
-  const { flags, operands } = parseFlags("grep", args, "inF");
-  if (operands.length < 2) fail("grep: expected a pattern and at least one virtual file", 2);
-  const pattern = operands[0].value;
-  if (!flags.has("F") && /[.*+?^${}()|[\]\\]/.test(pattern)) {
-    fail("grep: regex is not supported; use -F to search for those characters literally", 2);
-  }
+  const { flags, operands, pattern } = parseGrep(args);
   const needle = flags.has("i") ? pattern.toLowerCase() : pattern;
   const matches = [];
   for (const operand of operands.slice(1)) {
@@ -88,24 +67,9 @@ function globMatch(pattern, name) {
 }
 
 export function find(session, args) {
-  let index = 0;
-  let start = session.cwd;
-  let displayStart = ".";
-  if (args[0] && !args[0].value.startsWith("-")) {
-    start = pathArg(session, args[0]);
-    displayStart = args[0].homeExpansion ? start : args[0].value.replace(/\/$/, "") || "/";
-    index = 1;
-  }
-  let namePattern = null;
-  let typeFilter = null;
-  while (index < args.length) {
-    const option = args[index++].value;
-    const value = args[index++]?.value;
-    if (value === undefined) fail(`find: ${option} requires a value`, 2);
-    if (option === "-name" && namePattern === null) namePattern = value;
-    else if (option === "-type" && typeFilter === null && ["f", "d"].includes(value)) typeFilter = value;
-    else fail(`find: unsupported or repeated option ${option}`, 2);
-  }
+  const { startToken, namePattern, typeFilter } = parseFind(args);
+  const start = startToken ? pathArg(session, startToken) : session.cwd;
+  const displayStart = startToken ? (startToken.homeExpansion ? start : startToken.value.replace(/\/$/, "") || "/") : ".";
   stat(session, start);
   const found = [];
   function visit(path, depth) {

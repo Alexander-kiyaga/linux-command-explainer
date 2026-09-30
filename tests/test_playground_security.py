@@ -39,3 +39,14 @@ def test_terminal_controllers_do_not_transmit_simulated_commands():
         source = (static_js / name).read_text(encoding="utf-8")
         for pattern in (r"\bfetch\s*\(", r"\bXMLHttpRequest\b", r"\bWebSocket\b"):
             assert not re.search(pattern, source), f"Network API {pattern} in {name}"
+
+
+def test_compatibility_modules_cannot_dispatch_commands():
+    for name in ("compatibility.js", "syntax.js", "registry.js"):
+        source = (SIMULATION / name).read_text(encoding="utf-8")
+        assert "executeLine" not in source
+        assert "executeParsedCommand" not in source
+        assert "./engine.js" not in source
+        assert "commands/files.js" not in source
+        assert "commands/basic.js" not in source
+        assert "commands/text.js" not in source

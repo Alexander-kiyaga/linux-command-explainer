@@ -5,7 +5,7 @@
   <div class="home-hero-copy">
     <span class="home-eyebrow">A safer way to learn Linux</span>
     <h2 id="home-title">Understand the command.<br><span>Build the skill.</span></h2>
-    <p>Understand commands in plain English, then practice supported filesystem commands in a safe simulation. Missions offer guided practice. Task Builder and Bash tools are planned.</p>
+    <p>Understand commands in plain English, then practice supported filesystem commands in a safe simulation. Missions offer guided practice. Task Builder adds step-by-step plans. Bash tools are planned.</p>
     <a class="btn btn-primary home-cta" href="{{ url_for('main.explain_page') }}">Start with Explain <span aria-hidden="true">→</span></a>
   </div>
   <div class="home-terminal" aria-hidden="true">
@@ -24,7 +24,7 @@
   <div class="home-section-heading">
     <span class="home-eyebrow">Learning tools</span>
     <h2 id="tools-title">Find your next step</h2>
-    <p>Explain, Playground and Missions are available now. Task Builder and Bash are planned for later phases.</p>
+    <p>Explain, Task Builder, Playground and Missions are available now. Bash is planned for a later phase.</p>
   </div>
   <div class="tool-grid">
     <article class="tool-card tool-card-available">
@@ -33,10 +33,11 @@
       <p>Break down Linux commands, flags, examples, and potential impact without running the command.</p>
       <a href="{{ url_for('main.explain_page') }}" class="tool-link">Open Explain <span aria-hidden="true">→</span></a>
     </article>
-    <article class="tool-card">
-      <div class="tool-card-top"><span class="tool-icon" aria-hidden="true">🛠</span><span class="tool-status">Planned</span></div>
+    <article class="tool-card tool-card-available">
+      <div class="tool-card-top"><span class="tool-icon" aria-hidden="true">🛠</span><span class="tool-status tool-status-live">Available now</span></div>
       <h3>Task Builder</h3>
-      <p>Describe a Linux goal and study a proposed sequence of commands, one step at a time.</p>
+      <p>Describe a Linux goal and study an AI-proposed sequence of commands, one step at a time.</p>
+      <a href="{{ url_for('main.task_builder_page') }}" class="tool-link">Open Task Builder <span aria-hidden="true">→</span></a>
     </article>
     <article class="tool-card tool-card-available">
       <div class="tool-card-top"><span class="tool-icon" aria-hidden="true">💻</span><span class="tool-status tool-status-live">Available now</span></div>

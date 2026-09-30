@@ -37,6 +37,12 @@ class Config:
     except ValueError:
         MAX_OUTPUT_TOKENS = 1500
 
+    # Separate bounded output budget for multi-step educational plans.
+    try:
+        TASK_BUILDER_MAX_OUTPUT_TOKENS = int(os.getenv("TASK_BUILDER_MAX_OUTPUT_TOKENS", "3000"))
+    except ValueError:
+        TASK_BUILDER_MAX_OUTPUT_TOKENS = 3000
+
     # Server settings
     try:
         PORT = int(os.getenv("PORT", "5000"))

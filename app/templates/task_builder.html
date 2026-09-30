@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Task Builder | LinuxLab AI{% endblock %}
+{% block description %}Describe a Linux goal and study a step-by-step AI-proposed plan without executing commands.{% endblock %}
+{% block styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/playground.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/task-builder.css') }}">
+{% endblock %}
+{% block main %}
+<section class="playground-intro" aria-labelledby="task-builder-title">
+  <span class="home-eyebrow">Task Builder V1</span>
+  <h2 id="task-builder-title">Turn a Linux goal into a learning plan.</h2>
+  <p>Describe what you want to do. Gemini will suggest steps to study, and LinuxLab will independently check which command syntax Playground supports. No proposed command runs automatically.</p>
+</section>
+<section class="simulation-notice" role="note">
+  <strong>Planning only</strong><span>Generated commands are suggestions, not tested results. Playground is a limited browser simulation; compatibility does not mean a command is safe on a real system or guaranteed to work in your virtual session.</span>
+</section>
+<form id="task-builder-form" class="task-form" autocomplete="off">
+  <label for="task-input">What do you want to accomplish in Linux?</label>
+  <textarea id="task-input" maxlength="500" rows="4" placeholder="Create a directory called website, add index.html, and put Hello World in the file."></textarea>
+  <div class="task-form-actions"><span id="task-count">0 / 500</span><button id="task-submit" type="submit" class="btn btn-primary">Build plan</button></div>
+  <p>Submitting sends your task description to Gemini for a proposed plan. Review every command before use.</p>
+</form>
+<p id="task-status" class="playground-status" role="status" aria-live="polite"></p>
+<section id="task-result" class="task-result hidden" aria-labelledby="task-result-heading">
+  <div class="task-result-heading"><h3 id="task-result-heading">Your learning plan</h3><button id="task-clear" type="button" class="terminal-reset">Clear plan</button></div>
+  <p><strong>Original task:</strong> <span id="task-original"></span></p>
+  <p id="task-summary"></p>
+  <div id="task-assumptions-wrap"><h4>Assumptions to check</h4><ul id="task-assumptions"></ul></div>
+  <p id="task-overall-warning" class="task-warning hidden"></p>
+  <p id="task-question" class="task-question hidden"></p>
+  <div id="task-steps" class="task-steps"></div>
+</section>
+{% endblock %}
+{% block scripts %}<script type="module" src="{{ url_for('static', filename='js/task-builder.js') }}"></script>{% endblock %}

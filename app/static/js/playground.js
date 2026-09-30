@@ -1,6 +1,7 @@
 import { createStarterSession } from "./simulation/model.js";
 import { createPlaygroundStorage } from "./playground-storage.js";
 import { mountTerminal } from "./terminal-ui.js";
+import { createTaskBuilderStorage } from "./task-builder-storage.js";
 
 const status = document.getElementById("playground-status");
 const resetConfirm = document.getElementById("reset-confirm");
@@ -36,6 +37,32 @@ const terminal = mountTerminal({
   welcome: "LinuxLab Playground V1 — learning simulation only. No commands run on your computer or server.\nType help for supported commands.",
   onResult: ({ session: nextSession, history: nextHistory }) => save(nextSession, nextHistory),
 });
+
+const handoffPreview = document.getElementById("handoff-preview");
+try {
+  const draft = createTaskBuilderStorage(window.sessionStorage).consumeDraft(terminal.getState().session);
+  if (draft) {
+    document.getElementById("handoff-command").textContent = draft.command;
+    document.getElementById("handoff-reason").textContent = draft.classification.reason;
+    const warning = document.getElementById("handoff-warning");
+    warning.textContent = draft.classification.warning || "";
+    warning.classList.toggle("hidden", !draft.classification.warning);
+    handoffPreview.classList.remove("hidden");
+    document.getElementById("handoff-insert").addEventListener("click", () => {
+      input.value = draft.command;
+      handoffPreview.classList.add("hidden");
+      status.textContent = "Draft inserted. Review or edit it, then select Run to simulate it.";
+      terminal.focus();
+    });
+    document.getElementById("handoff-dismiss").addEventListener("click", () => {
+      handoffPreview.classList.add("hidden");
+      status.textContent = "Transferred draft dismissed. Playground files were unchanged.";
+      terminal.focus();
+    });
+  }
+} catch {
+  status.textContent = "The transferred command could not be previewed. Playground files were unchanged.";
+}
 
 document.getElementById("reset-session").addEventListener("click", () => {
   resetConfirm.classList.remove("hidden");

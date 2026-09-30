@@ -3,14 +3,12 @@ import { writeFile } from "./filesystem.js";
 import { assertLimits, cloneSession, LIMITS, utf8Length } from "./model.js";
 import { parseLine } from "./parser.js";
 import { pathArg } from "./commands/options.js";
+import { validateCommandSyntax } from "./syntax.js";
 import { pwd, whoami, cd, ls, clear, help } from "./commands/basic.js";
 import { mkdir, touch, cat, echo, cp, mv, rm, chmod } from "./commands/files.js";
 import { head, tail, grep, find } from "./commands/text.js";
 
-export const COMMANDS = Object.freeze([
-  "pwd", "ls", "cd", "mkdir", "touch", "cat", "echo", "cp", "mv", "rm",
-  "head", "tail", "grep", "find", "chmod", "whoami", "clear", "help",
-]);
+export { COMMANDS } from "./registry.js";
 const handlers = new Map(Object.entries({
   pwd, ls, cd, mkdir, touch, cat, echo, cp, mv, rm,
   head, tail, grep, find, chmod, whoami, clear, help,
@@ -34,6 +32,7 @@ export function executeParsedCommand(session, parsed) {
       session, stdout: "", stderr: `${parsed.command}: unsupported command; type help for V1 commands\n`,
       exitCode: 127, effect: null,
     };
+    validateCommandSyntax(parsed);
     const next = cloneSession(session);
     const result = handler(next, parsed.args);
     const exitCode = result.exitCode ?? 0;

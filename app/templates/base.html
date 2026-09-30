@@ -24,9 +24,15 @@
           {% if active_page in ['playground', 'missions'] %}
           <span class="badge badge-safety" title="Playground uses a virtual filesystem in your browser">🧪 Browser-only simulation</span>
           {% else %}
+          {% if active_page == 'task_builder' %}
+          <span class="badge badge-safety" title="Task Builder plans commands as text and never executes them">
+            🔒 Plans Never Execute Commands
+          </span>
+          {% else %}
           <span class="badge badge-safety" title="Explain analyzes commands as text and never executes them">
             🔒 Explain Never Executes Code
           </span>
+          {% endif %}
           <span class="badge {% if api_key_configured %}badge-success{% else %}badge-warning{% endif %}" id="api-status-badge">
             {% if api_key_configured %}● Gemini Connected{% else %}⚠ API Key Missing{% endif %}
           </span>
@@ -36,6 +42,7 @@
       <nav class="site-nav" aria-label="Main navigation">
         <a href="{{ url_for('main.index') }}" {% if active_page == 'home' %}aria-current="page"{% endif %}>Home</a>
         <a href="{{ url_for('main.explain_page') }}" {% if active_page == 'explain' %}aria-current="page"{% endif %}>Explain</a>
+        <a href="{{ url_for('main.task_builder_page') }}" {% if active_page == 'task_builder' %}aria-current="page"{% endif %}>Task Builder</a>
         <a href="{{ url_for('main.playground_page') }}" {% if active_page == 'playground' %}aria-current="page"{% endif %}>Playground</a>
         <a href="{{ url_for('main.missions_page') }}" {% if active_page == 'missions' %}aria-current="page"{% endif %}>Missions</a>
       </nav>
@@ -48,7 +55,7 @@
     <footer class="app-footer">
       <div class="footer-content">
         <p><strong>LinuxLab AI</strong> — Learn what Linux commands do before using them.</p>
-        <p class="footer-note">Explain analyzes commands as text and never executes them on the host system. Always review commands before running them on a real computer or server.</p>
+        <p class="footer-note">Explain and Task Builder treat commands as text and never execute them on the host system. Always review commands before running them on a real computer or server.</p>
       </div>
     </footer>
   </div>

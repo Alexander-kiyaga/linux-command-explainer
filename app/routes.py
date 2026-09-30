@@ -3,6 +3,7 @@ from pathlib import Path
 from flask import Blueprint, jsonify, render_template, request
 
 from app.config import Config
+from app.task_builder import generate_task_plan
 from app.explainer import (
     GeminiAppError,
     ApiKeyMissingError,
@@ -72,6 +73,37 @@ def missions_page():
         active_page="missions",
         api_key_configured=Config.is_api_key_configured(),
     )
+
+
+@bp.route("/task-builder")
+def task_builder_page():
+    """Render the educational AI task planning page."""
+    return render_template(
+        "task_builder.html", active_page="task_builder",
+        api_key_configured=Config.is_api_key_configured(),
+    )
+
+
+@bp.route("/api/task-builder/plan", methods=["POST"])
+def task_builder_plan():
+    """Generate a plan as text only. No command is executed or checked here."""
+    if not request.is_json or (request.content_length is not None and request.content_length > 4096):
+        return jsonify({"success": False, "error": "invalid_request", "message": "Provide a small JSON body with a task field."}), 400
+    if len(request.get_data(cache=True)) > 4096:
+        return jsonify({"success": False, "error": "invalid_request", "message": "Request body is too large."}), 400
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict) or set(payload) != {"task"} or not isinstance(payload["task"], str):
+        return jsonify({"success": False, "error": "invalid_request", "message": "Provide a text task field."}), 400
+    try:
+        cleaned, plan = generate_task_plan(payload["task"])
+        return jsonify({"success": True, "data": {"task": cleaned, "plan": plan.model_dump()}}), 200
+    except GeminiAppError as error:
+        response = {"success": False, "error": error.error_code, "message": error.message}
+        if error.details:
+            response["details"] = error.details
+        return jsonify(response), error.http_status
+    except Exception:
+        return jsonify({"success": False, "error": "internal_error", "message": "Task planning is unavailable right now."}), 500
 
 
 @bp.route("/api/commands", methods=["GET"])
