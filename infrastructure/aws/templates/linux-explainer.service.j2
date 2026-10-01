@@ -1,0 +1,24 @@
+[Unit]
+Description=LinuxLab AI
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User={{ app_user }}
+Group={{ app_user }}
+WorkingDirectory={{ release_root }}/current
+EnvironmentFile={{ release_root }}/shared/runtime.env
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=FLASK_DEBUG=False
+ExecStart={{ release_root }}/current/venv/bin/gunicorn --workers 2 --bind 127.0.0.1:8000 --timeout 75 --access-logfile - --error-logfile - wsgi:app
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=90
+TimeoutStopSec=30
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

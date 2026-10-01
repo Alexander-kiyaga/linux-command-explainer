@@ -1,5 +1,6 @@
 # Copy to terraform.tfvars (ignored by Git) and fill in your own AWS values.
 aws_region     = "eu-north-1"
+ami_id         = "ami-REPLACE_WITH_EXPLICIT_AMAZON_LINUX_2023_AMI"
 vpc_id         = "vpc-REPLACE_ME"
 subnet_id      = "subnet-REPLACE_ME"
 ec2_key_name   = "REPLACE_WITH_EXISTING_KEY_PAIR_NAME"

@@ -92,6 +92,8 @@
       ansible.builtin.assert:
         that:
           - local_secrets.stat.isreg | default(false)
+          - local_secrets.stat.mode | default('') in ['0400', '0600']
+        fail_msg: The private environment source must exist and be owner-readable only (0400 or 0600).
 
   tasks:
     - name: Install web server and smoke-check client
@@ -125,6 +127,83 @@
         - { path: "{{ release_root }}/incoming", group: root, mode: '0700' }
         - { path: "{{ release_root }}/shared", group: "{{ app_user }}", mode: '0750' }
         - { path: "{{ release_root }}/tools", group: root, mode: '0755' }
+        - { path: "{{ release_root }}/prepared", group: root, mode: '0700' }
+
+    - name: Inspect active LinuxLab release and legacy service
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        follow: false
+      loop:
+        - "{{ release_root }}/current"
+        - /etc/systemd/system/linux-explainer.service
+        - /etc/nginx/nginx.conf
+        - /opt/linux-command-explainer
+        - /opt/linux-command-explainer/.env
+      register: migration_paths
+      no_log: true
+
+    - name: Identify a first deployment over the legacy application
+      ansible.builtin.set_fact:
+        legacy_first_deployment: "{{ not migration_paths.results[0].stat.exists and migration_paths.results[1].stat.exists }}"
+
+    - name: Require a complete recoverable legacy installation
+      ansible.builtin.assert:
+        that:
+          - migration_paths.results[2].stat.isreg | default(false)
+          - migration_paths.results[3].stat.isdir | default(false)
+          - migration_paths.results[4].stat.isreg | default(false)
+        fail_msg: Legacy service, Nginx configuration, application directory and private environment must exist before first migration.
+      when: legacy_first_deployment
+
+    - name: Observe whether Nginx was already serving before deployment
+      ansible.builtin.command: systemctl is-active nginx
+      register: nginx_was_active
+      changed_when: false
+      failed_when: false
+
+    - name: Observe whether the legacy application service is active
+      ansible.builtin.command: systemctl is-active linux-explainer
+      register: legacy_service_was_active
+      changed_when: false
+      failed_when: false
+      when: legacy_first_deployment
+
+    - name: Require a running legacy recovery target
+      ansible.builtin.assert:
+        that:
+          - nginx_was_active.rc == 0
+          - legacy_service_was_active.rc == 0
+        fail_msg: First migration requires the legacy Nginx and application services to be running before preparation.
+      when: legacy_first_deployment
+
+    - name: Verify the existing legacy root page before migration
+      ansible.builtin.command:
+        argv: [curl, --noproxy, '*', --fail, --silent, --show-error, --output, /dev/null, http://127.0.0.1/]
+      changed_when: false
+      when: legacy_first_deployment
+
+    - name: Create protected legacy configuration backup directory
+      ansible.builtin.file:
+        path: "{{ release_root }}/legacy-recovery"
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+      when: legacy_first_deployment
+
+    - name: Preserve original service and Nginx configuration before preparation
+      ansible.builtin.copy:
+        src: "{{ item.src }}"
+        dest: "{{ release_root }}/legacy-recovery/{{ item.name }}"
+        remote_src: true
+        owner: root
+        group: root
+        mode: '0600'
+        force: false
+      loop:
+        - { src: /etc/systemd/system/linux-explainer.service, name: linux-explainer.service }
+        - { src: /etc/nginx/nginx.conf, name: nginx.conf }
+      when: legacy_first_deployment
 
     - name: Check whether this commit has already been installed
       ansible.builtin.stat:
@@ -216,6 +295,33 @@
       no_log: true
       diff: false
 
+    - name: Check required staged application files
+      ansible.builtin.stat:
+        path: "{{ stage_dir }}/{{ item }}"
+      loop:
+        - wsgi.py
+        - requirements.txt
+        - app/__init__.py
+        - app/static/js/bash/worker.js
+        - release.json
+        - venv/bin/gunicorn
+      register: staged_files
+
+    - name: Require a complete runnable staged release
+      ansible.builtin.assert:
+        that:
+          - staged_files.results | map(attribute='stat.isreg') | min
+
+    - name: Probe staged Flask application without starting a public service
+      ansible.builtin.command:
+        argv:
+          - "{{ stage_dir }}/venv/bin/python"
+          - -c
+          - "from wsgi import app; response = app.test_client().get('/health'); assert response.status_code == 200, response.status_code"
+        chdir: "{{ stage_dir }}"
+      become_user: "{{ app_user }}"
+      changed_when: false
+
     - name: Install atomic release switch tool
       ansible.builtin.copy:
         src: "{{ playbook_dir }}/../../scripts/switch_release.py"
@@ -224,59 +330,22 @@
         group: root
         mode: '0755'
 
-    - name: Configure conservative Gunicorn service
-      ansible.builtin.copy:
-        dest: /etc/systemd/system/linux-explainer.service
+    - name: Prepare conservative Gunicorn service without activating it
+      ansible.builtin.template:
+        src: templates/linux-explainer.service.j2
+        dest: "{{ release_root }}/prepared/linux-explainer.service"
         owner: root
         group: root
         mode: '0644'
-        content: |
-          [Unit]
-          Description=LinuxLab AI
-          Wants=network-online.target
-          After=network-online.target
 
-          [Service]
-          Type=simple
-          User={{ app_user }}
-          Group={{ app_user }}
-          WorkingDirectory={{ release_root }}/current
-          EnvironmentFile={{ release_root }}/shared/runtime.env
-          Environment=PYTHONUNBUFFERED=1
-          Environment=PYTHONDONTWRITEBYTECODE=1
-          Environment=FLASK_DEBUG=False
-          ExecStart={{ release_root }}/current/venv/bin/gunicorn --workers 2 --bind 127.0.0.1:8000 --timeout 75 --access-logfile - --error-logfile - wsgi:app
-          Restart=on-failure
-          RestartSec=5
-          TimeoutStartSec=90
-          TimeoutStopSec=30
-          PrivateTmp=true
-          NoNewPrivileges=true
-
-          [Install]
-          WantedBy=multi-user.target
-
-    - name: Configure Nginx HTTP, static assets, and AI limits
+    - name: Prepare and validate Nginx without changing its active configuration
       ansible.builtin.template:
         src: templates/nginx.conf.j2
-        dest: /etc/nginx/nginx.conf
+        dest: "{{ release_root }}/prepared/nginx.conf"
         owner: root
         group: root
         mode: '0644'
-        backup: true
         validate: /usr/sbin/nginx -t -c %s
-      register: nginx_config
-
-    - name: Start Nginx before the release switch
-      ansible.builtin.systemd_service:
-        name: nginx
-        enabled: true
-        state: started
-
-    - name: Reload validated Nginx configuration
-      ansible.builtin.systemd_service:
-        name: nginx
-        state: reloaded
 
     - name: Finalize clean release directory
       ansible.builtin.command:
@@ -290,12 +359,52 @@
             argv: [/usr/bin/python3, "{{ release_root }}/tools/switch_release.py", activate, --root, "{{ release_root }}", --commit, "{{ release_commit }}"]
           changed_when: true
 
+        - name: Record successful release switch for conditional recovery
+          ansible.builtin.set_fact:
+            release_switched: true
+
+        - name: Activate prepared Gunicorn service configuration
+          ansible.builtin.copy:
+            src: "{{ release_root }}/prepared/linux-explainer.service"
+            dest: /etc/systemd/system/linux-explainer.service
+            remote_src: true
+            owner: root
+            group: root
+            mode: '0644'
+
         - name: Restart the existing service name on the new release
           ansible.builtin.systemd_service:
             name: linux-explainer
             daemon_reload: true
             enabled: true
             state: restarted
+
+        - name: Probe new Gunicorn directly before activating Nginx configuration
+          ansible.builtin.command:
+            argv: [curl, --noproxy, '*', --fail, --silent, --show-error, --output, /dev/null, http://127.0.0.1:8000/health]
+          changed_when: false
+          register: preliminary_health
+          until: preliminary_health.rc == 0
+          retries: 5
+          delay: 2
+
+        - name: Activate validated Nginx configuration
+          ansible.builtin.copy:
+            src: "{{ release_root }}/prepared/nginx.conf"
+            dest: /etc/nginx/nginx.conf
+            remote_src: true
+            owner: root
+            group: root
+            mode: '0644'
+            backup: true
+            validate: /usr/sbin/nginx -t -c %s
+          register: nginx_config
+
+        - name: Start or reload Nginx after the new release is serving locally
+          ansible.builtin.systemd_service:
+            name: nginx
+            enabled: true
+            state: "{{ 'reloaded' if nginx_was_active.rc == 0 else 'started' }}"
 
         - name: Probe health, all learning pages, and the Bash module worker through Nginx
           ansible.builtin.command:
@@ -343,12 +452,34 @@
               - (active_identity.content | b64decode | from_json).commit == release_commit
 
       rescue:
-        - name: Atomically restore the previous release or clear failed first install
+        - name: Restore the previous LinuxLab release or clear failed first activation
           ansible.builtin.command:
             argv: [/usr/bin/python3, "{{ release_root }}/tools/switch_release.py", rollback, --root, "{{ release_root }}", --allow-empty]
           changed_when: true
+          when: release_switched | default(false)
 
-        - name: Restore prior Nginx configuration when this deployment changed it
+        - name: Restore the original legacy Gunicorn service configuration
+          ansible.builtin.copy:
+            src: "{{ release_root }}/legacy-recovery/linux-explainer.service"
+            dest: /etc/systemd/system/linux-explainer.service
+            remote_src: true
+            owner: root
+            group: root
+            mode: '0644'
+          when: legacy_first_deployment
+
+        - name: Restore the original legacy Nginx configuration
+          ansible.builtin.copy:
+            src: "{{ release_root }}/legacy-recovery/nginx.conf"
+            dest: /etc/nginx/nginx.conf
+            remote_src: true
+            owner: root
+            group: root
+            mode: '0644'
+            validate: /usr/sbin/nginx -t -c %s
+          when: legacy_first_deployment
+
+        - name: Restore previous LinuxLab Nginx configuration when it changed
           ansible.builtin.copy:
             src: "{{ nginx_config.backup_file }}"
             dest: /etc/nginx/nginx.conf
@@ -357,35 +488,43 @@
             group: root
             mode: '0644'
             validate: /usr/sbin/nginx -t -c %s
-          when: nginx_config.backup_file is defined
+          when:
+            - not legacy_first_deployment
+            - nginx_config is defined
+            - nginx_config.backup_file is defined
+
+        - name: Restart the restored legacy or previous LinuxLab service
+          ansible.builtin.systemd_service:
+            name: linux-explainer
+            daemon_reload: true
+            state: restarted
+          when: legacy_first_deployment or migration_paths.results[0].stat.exists
 
         - name: Reload restored Nginx configuration
           ansible.builtin.systemd_service:
             name: nginx
             state: reloaded
-          when: nginx_config.backup_file is defined
+          when: legacy_first_deployment or (nginx_config is defined and nginx_config.backup_file is defined)
 
-        - name: Check whether a prior release was restored
-          ansible.builtin.stat:
-            path: "{{ release_root }}/current"
-            follow: false
-          register: restored_current
-
-        - name: Restart restored service
-          ansible.builtin.systemd_service:
-            name: linux-explainer
-            state: restarted
-          when: restored_current.stat.exists
+        - name: Check recovered application through Nginx
+          ansible.builtin.command:
+            argv: [curl, --noproxy, '*', --fail, --silent, --show-error, --output, /dev/null, http://127.0.0.1/]
+          changed_when: false
+          register: recovery_health
+          until: recovery_health.rc == 0
+          retries: 5
+          delay: 2
+          when: legacy_first_deployment or migration_paths.results[0].stat.exists
 
         - name: Stop service after failed first install
           ansible.builtin.systemd_service:
             name: linux-explainer
             state: stopped
-          when: not restored_current.stat.exists
+          when: not legacy_first_deployment and not migration_paths.results[0].stat.exists
 
         - name: Report failed deployment after rollback
           ansible.builtin.fail:
-            msg: New release failed verification; current was restored to previous when available.
+            msg: New release failed verification; the legacy installation or previous LinuxLab release was restored when available.
 
     - name: Remove transferred archive after successful activation
       ansible.builtin.file:

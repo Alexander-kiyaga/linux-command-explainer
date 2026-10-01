@@ -4,6 +4,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import subprocess
 import tarfile
 from pathlib import Path
@@ -13,6 +14,7 @@ from jinja2 import Environment
 
 from scripts.release import allowed, build, verify
 from scripts.switch_release import switch
+from scripts.check_terraform_state import check_state
 
 
 def run(*args, cwd):
@@ -137,8 +139,64 @@ def test_http_nginx_preserves_ai_limits_static_worker_and_security_headers():
 
 def test_assignment_terraform_uses_ec2_public_ip_and_only_ssh_http_ingress():
     terraform = (Path(__file__).resolve().parent.parent / "infrastructure/aws/main.tf").read_text()
-    assert "associate_public_ip_address = true" in terraform
+    assert re.search(r"^\s*ami\s*=\s*var\.ami_id$", terraform, re.M)
+    assert "data.aws_ssm_parameter.amazon_linux.value" not in terraform
+    assert "associate_public_ip_address = true" not in terraform
+    assert "prevent_destroy = true" in terraform
     assert "value       = aws_instance.web.public_ip" in terraform
     assert "aws_eip" not in terraform
     assert "from_port   = 80" in terraform and "from_port   = 22" in terraform
     assert "from_port   = 443" not in terraform
+
+
+def test_existing_state_identity_guard_rejects_missing_or_wrong_resources(tmp_path):
+    state = tmp_path / "terraform.tfstate"
+    document = {
+        "version": 4, "lineage": "existing-lineage", "serial": 3,
+        "resources": [
+            {"mode": "managed", "type": "aws_instance", "name": "web",
+             "instances": [{"attributes": {"id": "i-existing", "root_block_device": [{"volume_id": "vol-existing"}]}}]},
+            {"mode": "managed", "type": "aws_security_group", "name": "web",
+             "instances": [{"attributes": {"id": "sg-existing"}}]},
+        ],
+    }
+    state.write_text(json.dumps(document))
+    assert check_state(state, "i-existing", "sg-existing", "vol-existing")["serial"] == 3
+    with pytest.raises(ValueError, match="expected EC2"):
+        check_state(state, "i-other", "sg-existing", "vol-existing")
+    with pytest.raises(ValueError, match="expected security group"):
+        check_state(state, "i-existing", "sg-other", "vol-existing")
+    with pytest.raises(ValueError, match="expected EC2 root volume"):
+        check_state(state, "i-existing", "sg-existing", "vol-other")
+    document["resources"] = []
+    state.write_text(json.dumps(document))
+    with pytest.raises(ValueError, match="exactly one"):
+        check_state(state, "i-existing", "sg-existing", "vol-existing")
+
+
+def test_deployment_prepares_before_active_changes_and_recovers_legacy():
+    playbook = (Path(__file__).resolve().parent.parent / "infrastructure/aws/deploy.yml").read_text()
+    preparation, activation = playbook.split("    - name: Activate, verify, or roll back the release", 1)
+    assert "dest: /etc/systemd/system/linux-explainer.service" not in preparation
+    assert "dest: /etc/nginx/nginx.conf" not in preparation
+    assert "state: reloaded" not in preparation
+    ordered_preparation = [
+        "Verify archive paths and embedded commit before transfer",
+        "Preserve original service and Nginx configuration before preparation",
+        "Extract only into the fresh staging directory",
+        "Install pinned dependencies into this release",
+        "Install private runtime environment outside releases",
+        "Probe staged Flask application without starting a public service",
+        "Prepare and validate Nginx without changing its active configuration",
+        "Finalize clean release directory",
+    ]
+    offsets = [preparation.index(name) for name in ordered_preparation]
+    assert offsets == sorted(offsets)
+    assert "local_secrets.stat.mode | default('') in ['0400', '0600']" in preparation
+    assert activation.index("Atomically switch current") < activation.index("Activate prepared Gunicorn")
+    assert activation.index("Probe new Gunicorn directly") < activation.index("Activate validated Nginx")
+    assert activation.index("Activate validated Nginx") < activation.index("Probe health, all learning pages")
+    assert "Restore the original legacy Gunicorn service configuration" in activation
+    assert "Restore the original legacy Nginx configuration" in activation
+    assert "Restore the previous LinuxLab release" in activation
+    assert "Check recovered application through Nginx" in activation

@@ -1,69 +1,71 @@
 # LinuxLab assignment deployment runbook
 
-The assignment architecture is **EC2 public IPv4 → Nginx HTTP :80 → loopback Gunicorn → Flask** on one Amazon Linux 2023 instance. Playground, Missions and Bash execute only in the learner's browser simulation. This assignment configuration does not need a domain, Elastic IP, port 443 or a certificate. The ordinary EC2 public IPv4 address can change after stop/start; update the ignored Ansible inventory if it does.
+The assignment architecture is **EC2 public IPv4 → Nginx HTTP :80 → loopback Gunicorn → Flask**. Playground, Missions and Bash execute in the browser's simulation. A domain, Elastic IP, port 443 and certificate are not required. The ordinary EC2 public IPv4 can change after stop/start.
 
-Commands below are labeled by effect. Do not use a fresh Terraform state against an already managed instance: reconcile or import the existing state first.
+**Commands below identify whether they are local/read-only or change AWS/the server. No Terraform operation is part of an application-only release.**
 
-## Prerequisites and local configuration
+## 1. Identify the existing infrastructure before planning
 
-- A clean checkout of the exact `linuxlab-v2` commit being released; Python 3, Git, Terraform, Ansible, an AWS account, an existing public VPC/subnet and EC2 key pair.
-- Access to the existing Terraform state if migrating the previous deployment. Inspect `terraform state list` and the proposed plan with the state owner. A current Amazon Linux AMI or different subnet/key value can replace an instance; preserve access until the plan is reviewed.
-- A private controller-side systemd environment file outside the repository, such as `/secure/linuxlab-runtime.env`, containing `GEMINI_API_KEY=...` and any chosen bounded settings from `.env.example`. Restrict it to the administrator (`chmod 600`). Ansible copies it to `/opt/linuxlab/shared/runtime.env` (root-owned, application-group readable), never into a release archive. Gunicorn binds only to `127.0.0.1:8000`.
+The original assignment state is `/Users/zandabeats/linux-explainer-aws/terraform.tfstate` on the original controller. It manages `aws_instance.web` (`i-0dca3d83202f83816`) and `aws_security_group.web` (`sg-0baa2c433ac631de4`), including encrypted root volume `vol-000f5ad8fc9105ee7`. This is the **authoritative existing state** until an explicitly approved migration chooses another location/backend. The new `infrastructure/aws` directory has no copy. Never plan or apply against an empty default state for this deployment: that could propose duplicates. Never copy, import or move state as an incidental application-deployment step.
 
-Copy `terraform.tfvars.example` to ignored `terraform.tfvars`, `inventory.ini.example` to ignored `inventory.ini`, and `deploy-vars.yml.example` to ignored `deploy-vars.yml`. Fill in your AWS region, existing VPC/public subnet, existing EC2 key name, administrator IPv4 `/32`, the instance's current public IPv4, SSH private-key path, release identity and private environment-file path. No domain or DNS input is needed.
+**Local read-only identity check**, using the original state's absolute path:
 
-## 1. Create and verify a release — local only, no AWS change
+```bash
+python3 scripts/check_terraform_state.py \
+  --state /Users/zandabeats/linux-explainer-aws/terraform.tfstate \
+  --instance-id i-0dca3d83202f83816 \
+  --security-group-id sg-0baa2c433ac631de4 \
+  --root-volume-id vol-000f5ad8fc9105ee7
+```
+
+Keep `terraform.tfvars` ignored by Git. For reconciliation, set `ami_id` to the existing instance's AMI (`ami-0b79f6b294a030f24`), not a moving “latest” reference. For **new** infrastructure, explicitly look up and review a suitable current Amazon Linux 2023 AMI, then pin that ID in its separate environment configuration. AMI upgrades are deliberate infrastructure changes, not side effects of a LinuxLab release. The chosen subnet must auto-assign public IPv4 and have an Internet Gateway route. The instance configuration leaves association to the subnet rather than treating a stopped instance's missing public IP as a replacement instruction. `prevent_destroy` makes an unexpected replacement fail instead of deleting the instance and root volume; inspect and resolve such plans rather than hiding drift.
+
+**Local Terraform checks:** `terraform -chdir=infrastructure/aws fmt -check`, `terraform -chdir=infrastructure/aws init -backend=false`, and `terraform -chdir=infrastructure/aws validate`. Initialization may write a local provider cache; it does not change AWS. **Read-only AWS plan, only after the identity check and once EC2 is running:** explicitly target the original state, for example `terraform -chdir=infrastructure/aws plan -state=/absolute/path/to/original/terraform.tfstate -lock=false -input=false` with reviewed variables. The `-state` flag is deprecated; establish a canonical backend/state location under separate approval before any apply. A plan is not trustworthy while the instance is stopped and its temporary public-IP association is absent. Reject any plan that replaces `aws_instance.web` or destroys its root volume. Do not apply merely to deploy application code.
+
+The security group permits public HTTP 80 and SSH from the configured administrator IPv4 `/32`. The 12 GiB gp3 root volume remains encrypted and IMDSv2 remains required. Port 443 is closed.
+
+## 2. Build and verify a release — local only
+
+Use a clean checkout of the intended Git commit. The release-artifact contract is unchanged:
 
 ```bash
 git status --short
 git rev-parse HEAD
 python3 scripts/release.py build --repo . --commit HEAD --output-dir dist
+python3 scripts/release.py verify --artifact /absolute/path/to/archive.tar.gz \
+  --commit FULL_COMMIT --sha256 FULL_SHA256 --repo .
 ```
 
-`build` rejects a dirty tree by default and always creates a fresh archive from tracked files in the requested Git commit. It packages the application, `wsgi.py`, `requirements.txt`, and `release.json`; it excludes `.env`, Git history, Terraform state/plans, virtual environments and caches. The output gives the archive's absolute path, full commit and SHA-256, also recorded in a sibling `.sha256` file. `--allow-dirty` is for local audits only: it still packages committed content, never local edits. Ansible refuses a dirty deployment checkout.
+`build` rejects a dirty tree, packages tracked application files from that commit, and emits `release.json` with commit/tree identity plus a SHA-256 checksum. It excludes `.env`, Git history, Terraform state/plans, virtual environments and caches. `--allow-dirty` is for local audits only and still packages committed content. Ansible refuses a dirty deployment checkout.
 
-Put the printed **absolute archive path**, full commit and checksum in `deploy-vars.yml`, then compare the archive against Git:
+## 3. Prepare private settings and a recovery point — server/AWS changes only when approved
+
+Create an explicit private controller-side systemd environment file **outside Git and the repository**, such as `/secure/linuxlab-runtime.env`, containing `GEMINI_API_KEY=...` and chosen bounded settings from `.env.example`. Its permissions must be `0400` or `0600`; the playbook rejects broader permissions. It installs the file as `/opt/linuxlab/shared/runtime.env`, root-owned and application-group readable (`0640`), outside every release. Do not point deployment at the existing repository-local `.env` while it is `0644`; do not print, archive or automatically alter it. The old `/opt/linux-command-explainer/.env` remains untouched for legacy recovery. Verify its **presence**, not its contents, before migration.
+
+Immediately before the first actual LinuxLab deployment, after the instance is running and server inspection is complete, take an **EBS snapshot of `vol-000f5ad8fc9105ee7` under separate AWS-change approval**. Record its snapshot ID and recovery procedure. The snapshot adds disk recovery, but does not replace service/Nginx recovery. No snapshot is created by release building or this playbook.
+
+Copy the examples to ignored `infrastructure/aws/inventory.ini` and `infrastructure/aws/deploy-vars.yml`. Set the instance's **current** public IP, SSH key path, full release commit, absolute archive path, checksum and private environment source. No domain or DNS input is needed.
+
+## 4. Deploy a verified release — changes the EC2 host; requires approval
 
 ```bash
-python3 scripts/release.py verify --artifact /absolute/path/to/archive.tar.gz --commit FULL_COMMIT --sha256 FULL_SHA256 --repo .
+ansible-playbook -i infrastructure/aws/inventory.ini infrastructure/aws/deploy.yml \
+  -e @infrastructure/aws/deploy-vars.yml
 ```
 
-`release.json` stores the full Git commit and tree identity. Rebuilding the same commit produces the same archive bytes and checksum.
+The playbook first verifies the controller commit, clean checkout, artifact and checksum. It verifies uploaded bytes and stages a fresh `/opt/linuxlab/releases/.staging-<commit>` directory. It installs dependencies in a release-specific virtual environment, copies private settings separately, checks required files, and probes Flask `/health` using the staged virtual environment without starting a public service. It renders/validates future systemd and Nginx configurations under `/opt/linuxlab/prepared/`. None of these preparation steps replaces the active service unit, reloads Nginx or changes `/opt/linuxlab/current`. Only a fully prepared release is moved to `/opt/linuxlab/releases/<full-commit>`.
 
-## 2. Review Terraform — local checks versus AWS changes
+For the **first deployment over the legacy application**, the playbook checks that the old application directory, service unit, Nginx configuration and `.env` exist, both services are running, and the old root page responds. It preserves copies of the original service unit and Nginx configuration in root-only `/opt/linuxlab/legacy-recovery/`; the old application directory and `.env` remain in place. Preparation failure leaves the old service and active Nginx configuration untouched.
 
-**Local-only checks:**
+Activation then atomically switches `current`, installs/restarts the new Gunicorn unit, and probes Gunicorn directly on `127.0.0.1:8000/health`. Only after that succeeds does it activate/reload the validated Nginx configuration. Nginx serves `/static/` directly; other routes proxy to Gunicorn. The three AI endpoints retain Stage 1 per-IP and global concurrency limits. Quota-free smoke tests check `/health`, all six learning pages, the Bash worker, security headers and private release identity. HTTP traffic is unencrypted; do not submit secrets or sensitive tasks to the assignment site.
 
-```bash
-cd infrastructure/aws
-terraform fmt -check
-terraform init -backend=false
-terraform validate
-```
+On activation or smoke-test failure, the playbook restores the legacy service unit and Nginx configuration on the first migration, removes the failed `current` link, restarts the old service, and checks its root page. On **later** releases it atomically restores `/opt/linuxlab/previous`, restarts Gunicorn, and restores the prior Nginx configuration if changed. It fails visibly after recovery. The old application directory is not converted into a LinuxLab release.
 
-Initialization may download the locked AWS provider locally; it does not change infrastructure. **AWS read/plan:** use the correct existing state and run `terraform plan -out=review.tfplan`, then examine every proposed EC2 and security-group change. A plan can contact AWS and lock a configured state backend. **AWS-changing command, deferred until approval:** `terraform apply review.tfplan`. Never apply from an empty state when the old instance is managed elsewhere.
+## 5. Identify and recover a release — server changes only when approved
 
-The security group allows public HTTP 80 and SSH only from the administrator's IPv4 `/32`; it does not open 443. The 12 GiB gp3 root volume remains encrypted and IMDSv2 remains required. Terraform outputs `public_ip`, which becomes the Ansible inventory address. The legacy security-group name/description and auto-public-IP setting are retained to reduce replacement risk, but the actual plan is authoritative.
+Read `/opt/linuxlab/current/release.json` or `readlink /opt/linuxlab/current` for the active commit; `readlink /opt/linuxlab/previous` identifies a previous **LinuxLab** release. These metadata files are not public routes. The first successful LinuxLab deployment has no `previous` symlink; its recovery target is the preserved legacy installation, not normal release rollback.
 
-## 3. Deploy a verified archive — changes the EC2 instance
-
-After the public IPv4 address is in the ignored inventory, run **only after approval**:
-
-```bash
-ansible-playbook -i infrastructure/aws/inventory.ini infrastructure/aws/deploy.yml -e @infrastructure/aws/deploy-vars.yml
-```
-
-The playbook requires its checkout to be clean and at `release_commit`. It verifies the controller archive against Git, verifies the transferred bytes, and extracts only into `/opt/linuxlab/releases/.staging-<commit>`. It creates a release-specific Python environment and installs pinned dependencies before moving the complete directory to `/opt/linuxlab/releases/<full-commit>`. It refuses to overwrite an existing release.
-
-Only after installation and configuration does `switch_release.py` atomically update `/opt/linuxlab/current`, saving the former target as `/opt/linuxlab/previous`. The existing `linux-explainer.service` name is retained for migration; it uses `current` and the shared private environment file. Two Gunicorn workers are retained. Nginx directly serves `/static/` with a five-minute revalidation cache; application and API routes proxy to Gunicorn. The three paid AI endpoints retain 6 requests/minute per IP, burst 2, and one concurrent request globally. Rate-limit responses are JSON with HTTP 429. Flask's input validation, sanitized errors and security headers remain enabled; Nginx adds matching headers to its own static and error responses. HTTP traffic itself is unencrypted, so do not send secrets or sensitive tasks through the public site.
-
-The playbook probes `/health`, all six learning pages, the Bash worker, response headers and the private active `release.json` identity through local Nginx. No smoke check calls Gemini. Failed post-switch verification restores `previous`, restores the prior Nginx configuration when changed, and restarts the application. A failed first install clears `current` and stops the new service.
-
-## 4. Identify and roll back a release — server changes
-
-On the instance, read `/opt/linuxlab/current/release.json` or run `readlink /opt/linuxlab/current` to identify the active commit. `readlink /opt/linuxlab/previous` identifies the prior release. These metadata paths are not public web routes. Check `systemctl status linux-explainer nginx` and the HTTP smoke URLs without asking Gemini.
-
-For a manual rollback **on the server**, after confirming `previous` exists:
+For a **later** manual rollback after confirming `previous` exists:
 
 ```bash
 sudo python3 /opt/linuxlab/tools/switch_release.py rollback --root /opt/linuxlab
@@ -71,10 +73,21 @@ sudo systemctl restart linux-explainer
 sudo systemctl reload nginx
 ```
 
-The switch atomically swaps `current` with `previous`; versioned release files are never mixed. Rollback does not change the shared environment or Nginx configuration. A first deployment has no previous release. Keep at least the current and previous release directories. Reusing the same failed commit requires reviewing and removing its inactive directory before retrying.
+This swaps the versioned `current`/`previous` symlinks without mixing application files. Shared environment and Nginx configuration are outside the release tree; review them if they changed. For a **first-migration** failure, use automatic recovery first. If manual recovery is needed, confirm that `/opt/linuxlab/previous` is absent and that the saved files and old application directory exist, then run these **server-changing commands**:
 
-## Migration and optional future HTTPS
+```bash
+sudo python3 /opt/linuxlab/tools/switch_release.py rollback --root /opt/linuxlab --allow-empty
+sudo install -m 0644 -o root -g root /opt/linuxlab/legacy-recovery/linux-explainer.service /etc/systemd/system/linux-explainer.service
+sudo install -m 0644 -o root -g root /opt/linuxlab/legacy-recovery/nginx.conf /etc/nginx/nginx.conf
+sudo systemctl daemon-reload
+sudo systemctl restart linux-explainer
+sudo nginx -t
+sudo systemctl reload nginx
+curl --fail http://127.0.0.1/
+```
 
-The previous playbook extracted a manually existing `application.tar.gz` over `/opt/linux-command-explainer`. This deployment does not use that archive or directory. It retains the service name so the new unit replaces the old process at activation. During the first switch, Nginx's new `/static/` mapping can briefly lack files until `current` exists. The old application directory remains available for manual recovery; it is not an automatic rollback target. Review the existing Terraform state before any apply.
+The old application's `.env` is reused in place; never print or copy its contents into a release. Keep `/opt/linux-command-explainer` and its private `.env` until the first LinuxLab deployment is verified and a later release provides a normal `previous` target.
 
-HTTPS is **outside the assignment deployment**. A later public production upgrade would need a domain or another TLS termination method, certificate issuance and renewal, an HTTPS listener, an HTTP redirect and certificate-aware smoke tests. HSTS should be considered only after HTTPS is working and verified. None of those resources or steps is enabled by this repository's assignment playbook.
+## Optional future HTTPS
+
+HTTPS is outside this assignment deployment. A later public production upgrade would need a domain or another TLS termination method, certificate issuance and renewal, an HTTPS listener, an HTTP redirect and certificate-aware smoke tests. Consider HSTS only after HTTPS works and is verified. None is enabled here.

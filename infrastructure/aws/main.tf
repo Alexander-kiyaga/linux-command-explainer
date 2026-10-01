@@ -59,8 +59,13 @@ variable "instance_type" {
   default     = "t3.micro"
 }
 
-data "aws_ssm_parameter" "amazon_linux" {
-  name = "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"
+variable "ami_id" {
+  description = "Explicit Amazon Linux 2023 AMI ID. Pin the existing instance's AMI when reconciling; choose a current AMI deliberately for a new instance."
+  type        = string
+  validation {
+    condition     = can(regex("^ami-[0-9a-f]+$", var.ami_id))
+    error_message = "ami_id must be an AWS AMI ID."
+  }
 }
 
 resource "aws_security_group" "web" {
@@ -95,12 +100,17 @@ resource "aws_security_group" "web" {
 }
 
 resource "aws_instance" "web" {
-  ami                         = data.aws_ssm_parameter.amazon_linux.value
-  instance_type               = var.instance_type
-  subnet_id                   = var.subnet_id
-  key_name                    = var.ec2_key_name
-  associate_public_ip_address = true
-  vpc_security_group_ids      = [aws_security_group.web.id]
+  ami           = var.ami_id
+  instance_type = var.instance_type
+  subnet_id     = var.subnet_id
+  key_name      = var.ec2_key_name
+  # The chosen public subnet must auto-assign IPv4. Do not infer desired
+  # replacement from the absent public association of a stopped instance.
+  vpc_security_group_ids = [aws_security_group.web.id]
+
+  lifecycle {
+    prevent_destroy = true
+  }
 
   user_data                   = <<-SCRIPT
     #!/bin/bash
