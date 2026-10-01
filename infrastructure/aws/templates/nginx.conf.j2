@@ -1,0 +1,71 @@
+{% macro security_headers() -%}
+add_header Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; script-src 'self'; worker-src 'self'; connect-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; form-action 'self'" always;
+add_header X-Content-Type-Options nosniff always;
+add_header Referrer-Policy no-referrer always;
+add_header X-Frame-Options DENY always;
+{%- endmacro %}
+user nginx;
+worker_processes auto;
+error_log /var/log/nginx/error.log;
+pid /run/nginx.pid;
+
+events { worker_connections 1024; }
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    access_log /var/log/nginx/access.log;
+    sendfile on;
+    server_tokens off;
+    limit_req_zone $binary_remote_addr zone=ai_per_ip:10m rate={{ ai_requests_per_minute }}r/m;
+    limit_conn_zone $server_name zone=ai_concurrent:1m;
+
+    server {
+        listen 80 default_server;
+        server_name _;
+        client_max_body_size 16k;
+        limit_req_status 429;
+        limit_conn_status 429;
+        error_page 429 = @ai_limited;
+        error_page 413 = @body_too_large;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 100s;
+
+        location ~ ^/api/(explain|task-builder/plan|bash/explain)$ {
+            limit_req zone=ai_per_ip burst={{ ai_burst }} nodelay;
+            limit_conn ai_concurrent {{ ai_max_inflight }};
+            proxy_pass http://127.0.0.1:8000;
+        }
+
+        location ^~ /static/ {
+            alias {{ release_root }}/current/app/static/;
+            try_files $uri =404;
+            add_header Cache-Control "public, max-age=300, must-revalidate" always;
+            {{ security_headers() }}
+        }
+
+        location @ai_limited {
+            internal;
+            default_type application/json;
+            add_header Retry-After 20 always;
+            {{ security_headers() }}
+            return 429 '{"success":false,"error":"rate_limited","message":"Too many AI requests right now. Please wait and try again."}';
+        }
+
+        location @body_too_large {
+            internal;
+            default_type application/json;
+            {{ security_headers() }}
+            return 413 '{"success":false,"error":"invalid_request","message":"Request body is too large."}';
+        }
+
+        location / {
+            proxy_pass http://127.0.0.1:8000;
+        }
+    }
+}

@@ -1,0 +1,23 @@
+.missions-layout { display: grid; grid-template-columns: 16rem minmax(0, 1fr); gap: 1.25rem; align-items: start; }
+.missions-list, .mission-brief, .mission-empty { border: 1px solid var(--border-color); border-radius: var(--radius-lg); background: var(--bg-secondary); padding: 1.2rem; }
+.missions-list-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 0.4rem; margin-bottom: 0.8rem; }
+.missions-list-heading h3 { font-size: 1.05rem; }
+.missions-list-heading span, .mission-difficulty { color: var(--text-muted); font-size: 0.8rem; }
+.mission-catalog { display: grid; gap: 0.45rem; margin-bottom: 1rem; }
+.mission-card { display: flex; flex-direction: column; gap: 0.15rem; width: 100%; padding: 0.7rem; text-align: left; color: inherit; background: #172338; border: 1px solid #475569; border-radius: var(--radius-sm); cursor: pointer; font: inherit; }
+.mission-card:hover, .mission-card:focus-visible, .mission-card-active { border-color: #38bdf8; background: #20344e; }
+.mission-card small { color: var(--text-muted); }
+.mission-card span { color: #6ee7b7; font-size: 0.8rem; }
+.mission-empty { color: var(--text-muted); }
+.mission-brief { margin-bottom: 1rem; }
+.mission-brief h3 { margin: 0.2rem 0 0.5rem; font-size: 1.5rem; }
+.mission-brief h4 { margin: 1rem 0 0.35rem; font-size: 0.95rem; }
+.mission-brief p, .mission-brief li, .mission-limits { color: var(--text-muted); }
+.mission-brief ul, .mission-brief ol { margin-left: 1.2rem; }
+.mission-objectives { list-style: none; margin-left: 0 !important; }
+.mission-objectives li { margin-bottom: 0.25rem; }
+.mission-objective-done, .mission-success { color: #6ee7b7 !important; }
+.mission-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.75rem 0; }
+.mission-hints li { margin-bottom: 0.4rem; }
+.mission-limits { font-size: 0.83rem; margin-top: 0.7rem; }
+@media (max-width: 800px) { .missions-layout { grid-template-columns: 1fr; } .mission-catalog { grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); } }

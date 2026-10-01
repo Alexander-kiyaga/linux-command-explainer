@@ -29,3 +29,19 @@ htmlcov/
 .idea/
 *.swp
 *~
+
+# Generated releases and local deployment configuration/state
+dist/
+*.tar.gz
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+*.pem
+*.key
+credentials
+infrastructure/aws/.terraform/
+infrastructure/aws/inventory.ini
+infrastructure/aws/deploy-vars.yml

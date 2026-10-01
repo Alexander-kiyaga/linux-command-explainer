@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Missions | LinuxLab AI{% endblock %}
+{% block description %}Solve guided Linux scenarios in a safe browser-only virtual filesystem.{% endblock %}
+{% block styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/playground.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/missions.css') }}">
+{% endblock %}
+{% block main %}
+<section class="playground-intro" aria-labelledby="missions-heading">
+  <span class="home-eyebrow">Missions V1</span>
+  <h2 id="missions-heading">Practice Linux skills with a goal.</h2>
+  <p>Choose a scenario, use supported commands in the simulated terminal, and meet its objectives. Completion is checked from virtual files and directories, never by AI.</p>
+</section>
+<section class="simulation-notice" role="note" aria-label="Simulation limits">
+  <strong>Learning simulation</strong>
+  <span>Commands run only in this browser's virtual filesystem. Nothing runs on your computer, the AWS server, a real shell or the network. Unsupported Linux and Bash behavior is not simulated.</span>
+</section>
+<div class="missions-layout">
+  <aside class="missions-list" aria-labelledby="missions-list-heading">
+    <div class="missions-list-heading"><h3 id="missions-list-heading">Choose a mission</h3><span>9 scenarios</span></div>
+    <div id="mission-catalog" class="mission-catalog"></div>
+    <button type="button" id="mission-clear-progress" class="terminal-reset reset-danger">Clear mission progress</button>
+  </aside>
+  <div class="missions-main">
+    <p id="mission-empty" class="mission-empty">Choose a mission to begin. Your normal Playground practice stays separate.</p>
+    <div id="mission-panel" class="hidden">
+      <section class="mission-brief" aria-labelledby="mission-title">
+        <span id="mission-difficulty" class="mission-difficulty"></span>
+        <h3 id="mission-title"></h3>
+        <p id="mission-description"></p>
+        <h4>What you will practice</h4><ul id="mission-learning"></ul>
+        <h4>Objectives</h4><ul id="mission-objectives" class="mission-objectives"></ul>
+        <p id="mission-result" class="mission-result" role="status" aria-live="polite"></p>
+        <div class="mission-actions"><button type="button" id="mission-hint-button" class="terminal-reset">Show next hint</button><button type="button" id="mission-retry" class="terminal-reset">Retry mission</button></div>
+        <ol id="mission-hints" class="mission-hints"></ol>
+      </section>
+      <section class="playground-terminal" aria-label="Simulated mission terminal">
+        <div class="playground-terminal-header"><div><span class="terminal-indicator" aria-hidden="true"></span><strong>linuxlab://mission</strong><span class="terminal-header-subtitle">Browser only</span></div></div>
+        <div id="terminal-output" class="terminal-output" role="log" aria-live="polite" aria-relevant="additions text"></div>
+        <form id="terminal-form" class="terminal-form" autocomplete="off">
+          <label class="sr-only" for="terminal-input">Enter a simulated mission command</label>
+          <span id="terminal-prompt" class="terminal-prompt" aria-hidden="true"></span>
+          <input id="terminal-input" name="command" type="text" maxlength="2048" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="Enter a simulated mission command">
+          <button type="submit" class="terminal-run">Run</button>
+        </form>
+      </section>
+      <p class="mission-limits">Only Playground V1 commands and syntax work here. <code>clear</code> clears the screen but keeps virtual files and command history.</p>
+    </div>
+  </div>
+</div>
+<p id="mission-status" class="playground-status" role="status" aria-live="polite"></p>
+{% endblock %}
+{% block scripts %}<script type="module" src="{{ url_for('static', filename='js/missions.js') }}"></script>{% endblock %}

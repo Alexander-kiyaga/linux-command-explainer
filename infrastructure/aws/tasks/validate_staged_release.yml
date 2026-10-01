@@ -1,0 +1,67 @@
+---
+- name: Check required staged application files
+  ansible.builtin.stat:
+    path: "{{ stage_dir }}/{{ item }}"
+    follow: false
+  loop:
+    - wsgi.py
+    - requirements.txt
+    - app/__init__.py
+    - app/static/js/bash/worker.js
+    - release.json
+  register: staged_files
+
+- name: Require regular staged application files
+  ansible.builtin.assert:
+    that:
+      - staged_files.results | map(attribute='stat.isreg') | min
+
+- name: Check required staged directories
+  ansible.builtin.stat:
+    path: "{{ stage_dir }}/{{ item }}"
+    follow: false
+  loop:
+    - app
+    - app/static
+    - app/static/js
+    - app/static/js/bash
+    - venv
+    - venv/bin
+  register: staged_directories
+
+- name: Require staged directories for Python and static assets
+  ansible.builtin.assert:
+    that:
+      - staged_directories.results | map(attribute='stat.isdir') | min
+
+- name: Resolve staged virtualenv Python launcher
+  ansible.builtin.stat:
+    path: "{{ stage_dir }}/venv/bin/python"
+    follow: true
+  register: staged_python
+
+- name: Require a real executable Python target
+  ansible.builtin.assert:
+    that:
+      - staged_python.stat.exists | default(false)
+      - staged_python.stat.isreg | default(false)
+      - staged_python.stat.executable | default(false)
+    fail_msg: The staged virtualenv Python launcher must resolve to a regular executable file.
+
+- name: Verify the application user can execute staged Python
+  ansible.builtin.command:
+    argv: ["{{ stage_dir }}/venv/bin/python", --version]
+  become_user: "{{ app_user }}"
+  changed_when: false
+
+- name: Probe staged Flask application without starting a public service
+  ansible.builtin.command:
+    argv:
+      - "{{ stage_dir }}/venv/bin/python"
+      - -c
+      - "from wsgi import app; response = app.test_client().get('/health'); assert response.status_code == 200, response.status_code"
+    chdir: "{{ stage_dir }}"
+  become_user: "{{ app_user }}"
+  environment:
+    PYTHONDONTWRITEBYTECODE: '1'
+  changed_when: false

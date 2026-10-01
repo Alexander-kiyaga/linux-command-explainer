@@ -1,0 +1,39 @@
+.bash-intro{max-width:850px;margin:0 auto 1.4rem}
+.bash-intro h2{font-size:clamp(2rem,4vw,3rem);margin:.4rem 0}
+.bash-intro p{line-height:1.6}
+.bash-layout{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(260px,.8fr);gap:1.2rem;margin:1.4rem 0}
+.bash-editor-panel,.bash-side,.bash-output-panel,.bash-debug,.bash-explanation{background:#fff;border:1px solid #dce5ec;border-radius:16px;padding:1.3rem;box-shadow:0 7px 25px rgba(19,40,58,.05)}
+.bash-panel-head{display:flex;align-items:center;justify-content:space-between;gap:1rem}
+.bash-panel-head h3,.bash-side h3,.bash-debug h3,.bash-explanation h3{margin:0 0 .8rem}
+.bash-panel-head span{font-size:.85rem;color:#526575}
+.bash-editor-panel textarea{display:block;width:100%;min-height:300px;padding:1rem;resize:vertical;background:#10212c;color:#e8f5f0;border:1px solid #36535b;border-radius:10px;font:14px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;tab-size:2}
+.bash-editor-panel textarea:focus{outline:3px solid #78d5c1;outline-offset:2px}
+.bash-actions{display:flex;flex-wrap:wrap;align-items:center;gap:.65rem;margin-top:1rem}
+.bash-button{border:1px solid #bfd0d7;background:#f7fbfc;color:#173748;border-radius:8px;padding:.65rem .85rem;cursor:pointer;font:inherit}
+.bash-button:hover{background:#eaf3f5}
+.bash-button:disabled,.bash-actions button:disabled{cursor:not-allowed;opacity:.6}
+.bash-editor-panel #bash-status{margin:.85rem 0 0;color:#31516a}
+.bash-side h4{margin:1.3rem 0 .4rem}
+.bash-side p{line-height:1.5}
+.bash-files{max-height:300px;overflow:auto;padding-left:1.2rem;font:13px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace}
+.bash-files li{overflow-wrap:anywhere}
+.bash-confirm{padding:.7rem;margin-top:.7rem;background:#fff7e9;border-radius:8px}
+.bash-output-panel,.bash-debug,.bash-explanation{margin:1.2rem 0}
+.bash-output{min-height:100px;max-height:350px;overflow:auto;padding:1rem;background:#10212c;color:#e8f5f0;border-radius:10px;font:13px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+.bash-output .stderr{color:#ffd1c4}
+.bash-output .diagnostic{color:#ffe5a6}
+.bash-debug select{display:block;width:min(100%,360px);padding:.55rem;margin:.35rem 0 1rem;border:1px solid #bfd0d7;border-radius:8px;font:inherit}
+.bash-debug li,.bash-explanation li{margin:.35rem 0}
+.bash-explanation ol{padding-left:1.7rem}
+.bash-explanation li{line-height:1.5}
+.bash-explanation .bash-code-line{display:block;font:12px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace;background:#eff4f6;padding:.4rem;margin:.25rem 0}
+.hidden{display:none!important}
+@media(max-width:780px){.bash-layout{grid-template-columns:1fr}
+.bash-editor-panel,.bash-side,.bash-output-panel,.bash-debug,.bash-explanation{padding:1rem}
+}
+
+.simulation-notice{display:flex;gap:.8rem;align-items:flex-start;padding:1rem 1.2rem;margin:1rem 0;background:#eaf8f4;border:1px solid #b9e3d5;border-radius:10px;color:#173b37}
+.simulation-notice strong{white-space:nowrap}
+@media(max-width:600px){.simulation-notice{display:block}
+.simulation-notice strong{display:block;margin-bottom:.3rem}
+}

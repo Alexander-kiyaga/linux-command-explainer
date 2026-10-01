@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Bash | LinuxLab AI{% endblock %}
+{% block description %}Write and practice bounded Bash scripts in a browser-only Linux learning simulation.{% endblock %}
+{% block styles %}<link rel="stylesheet" href="{{ url_for('static', filename='css/bash.css') }}">{% endblock %}
+{% block main %}
+<section class="bash-intro" aria-labelledby="bash-heading">
+  <span class="home-eyebrow">Bash V1</span>
+  <h2 id="bash-heading">Practice scripts in a virtual Linux workspace.</h2>
+  <p>Write a small script, run it against LinuxLab's virtual filesystem, and study the result. This is a limited teaching interpreter, not GNU Bash or a real shell. Scripts never run on your computer or server.</p>
+</section>
+<section class="simulation-notice" role="note">
+  <strong>Browser-only simulation</strong>
+  <span>Only the documented Bash V1 subset works here. Unsupported syntax is rejected, and output may differ from real Bash. Explain Script sends text to Gemini only when you select it; Run stays in this browser.</span>
+</section>
+<div class="bash-layout">
+  <section class="bash-editor-panel" aria-labelledby="bash-editor-heading">
+    <div class="bash-panel-head"><h3 id="bash-editor-heading">Script editor</h3><span id="bash-count">0 / 8192 bytes</span></div>
+    <label for="bash-editor" class="sr-only">Bash learning script</label>
+    <textarea id="bash-editor" spellcheck="false" autocapitalize="off" autocomplete="off" rows="16" aria-label="Bash learning script"></textarea>
+    <div class="bash-actions">
+      <button id="bash-run" type="button" class="btn btn-primary">Run in simulation</button>
+      <button id="bash-explain" type="button" class="bash-button">Explain Script</button>
+      <button id="bash-clear-script" type="button" class="bash-button">Clear script</button>
+    </div>
+    <p id="bash-status" role="status" aria-live="polite">Ready. Variables start fresh on every Run.</p>
+  </section>
+  <aside class="bash-side" aria-labelledby="bash-files-heading">
+    <h3 id="bash-files-heading">Free-practice virtual files</h3>
+    <p>Debug exercises use their own fresh snapshots.</p>
+    <p id="bash-cwd"></p>
+    <ul id="bash-files" class="bash-files"></ul>
+    <button id="bash-reset" type="button" class="bash-button">Reset virtual files</button>
+    <div id="bash-reset-confirm" class="bash-confirm hidden" role="group" aria-label="Confirm Bash virtual filesystem reset">
+      <p>Restore only Bash's virtual files? Your script draft will stay.</p>
+      <button id="bash-confirm-reset" type="button" class="bash-button">Reset Bash files</button>
+      <button id="bash-cancel-reset" type="button" class="bash-button">Cancel</button>
+    </div>
+    <h4>Supported subset</h4>
+    <p>Assignments, $NAME, ${NAME}, $HOME, $PWD, $?, quotes, [ tests ], if/else, bounded for lists and globs, exit, and existing virtual filesystem commands.</p>
+    <p>There are no pipes, while loops, functions, script arguments, external programs, or general command globs.</p>
+  </aside>
+</div>
+<section class="bash-output-panel" aria-labelledby="bash-output-heading">
+  <div class="bash-panel-head"><h3 id="bash-output-heading">Run output</h3><span id="bash-exit-status">No run yet</span></div>
+  <div id="bash-output" class="bash-output" role="log" aria-live="polite"></div>
+</section>
+<section id="bash-explanation" class="bash-explanation hidden" aria-labelledby="bash-explanation-heading">
+  <h3 id="bash-explanation-heading">Script explanation</h3>
+  <p id="bash-explanation-summary"></p>
+  <ol id="bash-explanation-lines"></ol>
+  <div id="bash-explanation-unsupported-wrap" class="hidden"><h4>Features outside the teaching subset</h4><ul id="bash-explanation-unsupported"></ul></div>
+  <p id="bash-explanation-caution"></p>
+</section>
+<section class="bash-debug" aria-labelledby="bash-debug-heading">
+  <h3 id="bash-debug-heading">Debug a broken script</h3>
+  <p>Choose an authored exercise, make a fix, and run it against a fresh virtual snapshot. Hints are revealed one at a time. Completion is checked from virtual results, never by AI.</p>
+  <label for="bash-debug-select">Exercise</label>
+  <select id="bash-debug-select"><option value="">Free practice</option></select>
+  <p id="bash-debug-description"></p>
+  <ul id="bash-debug-objectives"></ul>
+  <div class="bash-actions">
+    <button id="bash-hint" type="button" class="bash-button hidden">Show next hint</button>
+    <button id="bash-retry" type="button" class="bash-button hidden">Reset exercise draft</button>
+  </div>
+  <ol id="bash-hints"></ol>
+  <p id="bash-debug-status" role="status" aria-live="polite"></p>
+</section>
+{% endblock %}
+{% block scripts %}<script type="module" src="{{ url_for('static', filename='js/bash.js') }}"></script>{% endblock %}
