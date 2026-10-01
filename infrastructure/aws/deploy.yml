@@ -1,21 +1,43 @@
 ---
-- name: Deploy Linux Command Explainer
+- name: Install an explicitly verified LinuxLab release
   hosts: web
   become: true
-
   vars:
-    app_dir: /opt/linux-command-explainer
+    release_root: /opt/linuxlab
     app_user: linuxexplainer
-    local_project: "{{ lookup('ansible.builtin.env', 'HOME') }}/linux-command-explainer"
-    # Shared across all three paid Gemini endpoints; tune only after observing traffic.
     ai_requests_per_minute: 6
     ai_burst: 2
     ai_max_inflight: 1
+    release_dir: "{{ release_root }}/releases/{{ release_commit | default('MISSING') }}"
+    stage_dir: "{{ release_root }}/releases/.staging-{{ release_commit | default('MISSING') }}"
+    incoming_archive: "{{ release_root }}/incoming/{{ release_commit | default('MISSING') }}.tar.gz"
 
-  tasks:
-    - name: Validate production AI traffic controls
+  pre_tasks:
+    - name: Read deployment checkout commit on the controller
+      ansible.builtin.command:
+        argv: [git, -C, "{{ playbook_dir }}/../..", rev-parse, HEAD]
+      register: controller_commit
+      delegate_to: localhost
+      become: false
+      changed_when: false
+
+    - name: Check deployment checkout cleanliness on the controller
+      ansible.builtin.command:
+        argv: [git, -C, "{{ playbook_dir }}/../..", status, --porcelain=v1, --untracked-files=all]
+      register: controller_status
+      delegate_to: localhost
+      become: false
+      changed_when: false
+
+    - name: Validate explicit release and deployment settings
       ansible.builtin.assert:
         that:
+          - controller_commit.stdout == (release_commit | default(''))
+          - controller_status.stdout == ''
+          - (release_artifact | default('')) is match('^/')
+          - (release_commit | default('')) is match('^[0-9a-f]{40,64}$')
+          - (release_sha256 | default('')) is match('^[0-9a-f]{64}$')
+          - (secrets_file | default('')) is match('^/')
           - (ai_requests_per_minute | string) is match('^[0-9]+$')
           - ai_requests_per_minute | int >= 1
           - ai_requests_per_minute | int <= 60
@@ -25,17 +47,57 @@
           - (ai_max_inflight | string) is match('^[0-9]+$')
           - ai_max_inflight | int >= 1
           - ai_max_inflight | int <= 2
-        fail_msg: AI traffic limits must stay within the documented safe ranges.
+        fail_msg: Explicit release identity, secrets path, and safe AI limits are required.
 
-    - name: Check whether Nginx is installed
-      ansible.builtin.command: rpm -q nginx
-      register: nginx_package
+    - name: Inspect release archive on the controller
+      ansible.builtin.stat:
+        path: "{{ release_artifact }}"
+        checksum_algorithm: sha256
+      register: local_archive
+      delegate_to: localhost
+      become: false
+
+    - name: Require the exact expected release archive
+      ansible.builtin.assert:
+        that:
+          - local_archive.stat.isreg | default(false)
+          - local_archive.stat.checksum | default('') == release_sha256
+
+    - name: Verify archive paths and embedded commit before transfer
+      ansible.builtin.command:
+        argv:
+          - python3
+          - "{{ playbook_dir }}/../../scripts/release.py"
+          - verify
+          - --artifact
+          - "{{ release_artifact }}"
+          - --commit
+          - "{{ release_commit }}"
+          - --sha256
+          - "{{ release_sha256 }}"
+          - --repo
+          - "{{ playbook_dir }}/../.."
+      delegate_to: localhost
+      become: false
       changed_when: false
-      failed_when: nginx_package.rc not in [0, 1]
 
-    - name: Install Nginx
-      ansible.builtin.command: dnf install -y nginx
-      when: nginx_package.rc == 1
+    - name: Inspect private environment file on the controller
+      ansible.builtin.stat:
+        path: "{{ secrets_file }}"
+      register: local_secrets
+      delegate_to: localhost
+      become: false
+
+    - name: Require an existing private environment file
+      ansible.builtin.assert:
+        that:
+          - local_secrets.stat.isreg | default(false)
+
+  tasks:
+    - name: Install web server and smoke-check client
+      ansible.builtin.command: dnf install -y nginx curl
+      register: packages
+      changed_when: "'Nothing to do' not in packages.stdout"
 
     - name: Create application group
       ansible.builtin.group:
@@ -50,64 +112,127 @@
         create_home: false
         shell: /sbin/nologin
 
-    - name: Create application directory
+    - name: Create release layout
       ansible.builtin.file:
-        path: "{{ app_dir }}"
+        path: "{{ item.path }}"
+        state: directory
+        owner: root
+        group: "{{ item.group }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - { path: "{{ release_root }}", group: root, mode: '0755' }
+        - { path: "{{ release_root }}/releases", group: root, mode: '0755' }
+        - { path: "{{ release_root }}/incoming", group: root, mode: '0700' }
+        - { path: "{{ release_root }}/shared", group: "{{ app_user }}", mode: '0750' }
+        - { path: "{{ release_root }}/tools", group: root, mode: '0755' }
+
+    - name: Check whether this commit has already been installed
+      ansible.builtin.stat:
+        path: "{{ release_dir }}"
+        follow: false
+      register: existing_release
+
+    - name: Refuse to overwrite an immutable release
+      ansible.builtin.assert:
+        that:
+          - not existing_release.stat.exists
+        fail_msg: This release directory already exists; use rollback or a new commit rather than extracting over it.
+
+    - name: Remove an incomplete staging directory from a prior failed attempt
+      ansible.builtin.file:
+        path: "{{ stage_dir }}"
+        state: absent
+
+    - name: Create fresh staging directory
+      ansible.builtin.file:
+        path: "{{ stage_dir }}"
         state: directory
         owner: root
         group: "{{ app_user }}"
-        mode: "0755"
+        mode: '0755'
 
-    - name: Transfer and extract committed application
+    - name: Transfer explicitly verified release archive
+      ansible.builtin.copy:
+        src: "{{ release_artifact }}"
+        dest: "{{ incoming_archive }}"
+        owner: root
+        group: root
+        mode: '0600'
+
+    - name: Verify transferred archive checksum
+      ansible.builtin.stat:
+        path: "{{ incoming_archive }}"
+        checksum_algorithm: sha256
+      register: remote_archive
+
+    - name: Require matching transferred bytes
+      ansible.builtin.assert:
+        that:
+          - remote_archive.stat.checksum == release_sha256
+
+    - name: Extract only into the fresh staging directory
       ansible.builtin.unarchive:
-        src: "{{ playbook_dir }}/application.tar.gz"
-        dest: "{{ app_dir }}"
+        src: "{{ incoming_archive }}"
+        dest: "{{ stage_dir }}"
+        remote_src: true
         owner: root
         group: "{{ app_user }}"
-      notify: Restart application
 
-    - name: Create server Python virtual environment
+    - name: Read staged release identity
+      ansible.builtin.slurp:
+        src: "{{ stage_dir }}/release.json"
+      register: staged_identity
+
+    - name: Require staged commit identity
+      ansible.builtin.assert:
+        that:
+          - (staged_identity.content | b64decode | from_json).commit == release_commit
+
+    - name: Create a virtual environment inside this release
+      ansible.builtin.command:
+        argv: [/usr/bin/python3.12, -m, venv, "{{ stage_dir }}/venv"]
+        creates: "{{ stage_dir }}/venv/bin/python"
+
+    - name: Install pinned dependencies into this release
       ansible.builtin.command:
         argv:
-          - /usr/bin/python3.12
-          - -m
-          - venv
-          - "{{ app_dir }}/venv"
-        creates: "{{ app_dir }}/venv/bin/python"
-
-    - name: Install application dependencies
-      ansible.builtin.command:
-        argv:
-          - "{{ app_dir }}/venv/bin/python"
+          - "{{ stage_dir }}/venv/bin/python"
           - -m
           - pip
           - install
+          - --no-cache-dir
           - -r
-          - "{{ app_dir }}/requirements.txt"
+          - "{{ stage_dir }}/requirements.txt"
       register: pip_install
-      changed_when: "'Successfully installed' in pip_install.stdout"
-      notify: Restart application
+      changed_when: true
 
-    - name: Privately transfer application environment
+    - name: Install private runtime environment outside releases
       ansible.builtin.copy:
-        src: "{{ local_project }}/.env"
-        dest: "{{ app_dir }}/.env"
+        src: "{{ secrets_file }}"
+        dest: "{{ release_root }}/shared/runtime.env"
         owner: root
         group: "{{ app_user }}"
-        mode: "0640"
+        mode: '0640'
       no_log: true
       diff: false
-      notify: Restart application
 
-    - name: Configure application systemd service
+    - name: Install atomic release switch tool
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../scripts/switch_release.py"
+        dest: "{{ release_root }}/tools/switch_release.py"
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Configure conservative Gunicorn service
       ansible.builtin.copy:
         dest: /etc/systemd/system/linux-explainer.service
         owner: root
         group: root
-        mode: "0644"
+        mode: '0644'
         content: |
           [Unit]
-          Description=Linux Command Explainer
+          Description=LinuxLab AI
           Wants=network-online.target
           After=network-online.target
 
@@ -115,132 +240,154 @@
           Type=simple
           User={{ app_user }}
           Group={{ app_user }}
-          WorkingDirectory={{ app_dir }}
+          WorkingDirectory={{ release_root }}/current
+          EnvironmentFile={{ release_root }}/shared/runtime.env
           Environment=PYTHONUNBUFFERED=1
           Environment=PYTHONDONTWRITEBYTECODE=1
           Environment=FLASK_DEBUG=False
-          Environment=GEMINI_MODEL=gemini-3.6-flash
-          Environment=API_TIMEOUT_SECONDS=45
-          ExecStart={{ app_dir }}/venv/bin/gunicorn --workers 2 --bind 127.0.0.1:8000 --timeout 90 --access-logfile - --error-logfile - wsgi:app
+          ExecStart={{ release_root }}/current/venv/bin/gunicorn --workers 2 --bind 127.0.0.1:8000 --timeout 75 --access-logfile - --error-logfile - wsgi:app
           Restart=on-failure
           RestartSec=5
+          TimeoutStartSec=90
+          TimeoutStopSec=30
           PrivateTmp=true
           NoNewPrivileges=true
 
           [Install]
           WantedBy=multi-user.target
-      notify: Restart application
 
-    - name: Configure Nginx reverse proxy
-      ansible.builtin.copy:
+    - name: Configure Nginx HTTP, static assets, and AI limits
+      ansible.builtin.template:
+        src: templates/nginx.conf.j2
         dest: /etc/nginx/nginx.conf
         owner: root
         group: root
-        mode: "0644"
+        mode: '0644'
         backup: true
         validate: /usr/sbin/nginx -t -c %s
-        content: |
-          user nginx;
-          worker_processes auto;
-          error_log /var/log/nginx/error.log;
-          pid /run/nginx.pid;
+      register: nginx_config
 
-          events {
-              worker_connections 1024;
-          }
-
-          http {
-              include /etc/nginx/mime.types;
-              default_type application/octet-stream;
-              access_log /var/log/nginx/access.log;
-              sendfile on;
-              server_tokens off;
-              limit_req_zone $binary_remote_addr zone=ai_per_ip:10m rate={{ ai_requests_per_minute }}r/m;
-              limit_conn_zone $server_name zone=ai_concurrent:1m;
-
-              server {
-                  listen 80 default_server;
-                  server_name _;
-                  client_max_body_size 16k;
-                  limit_req_status 429;
-                  limit_conn_status 429;
-                  error_page 429 = @ai_limited;
-                  error_page 413 = @body_too_large;
-
-                  proxy_set_header Host $host;
-                  proxy_set_header X-Real-IP $remote_addr;
-                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                  proxy_set_header X-Forwarded-Proto $scheme;
-                  proxy_connect_timeout 5s;
-                  proxy_read_timeout 100s;
-
-                  location ~ ^/api/(explain|task-builder/plan|bash/explain)$ {
-                      limit_req zone=ai_per_ip burst={{ ai_burst }} nodelay;
-                      limit_conn ai_concurrent {{ ai_max_inflight }};
-                      proxy_pass http://127.0.0.1:8000;
-                  }
-
-                  location @ai_limited {
-                      internal;
-                      default_type application/json;
-                      add_header Retry-After 20 always;
-                      add_header Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; script-src 'self'; worker-src 'self'; connect-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; form-action 'self'" always;
-                      add_header X-Content-Type-Options nosniff always;
-                      add_header Referrer-Policy no-referrer always;
-                      add_header X-Frame-Options DENY always;
-                      return 429 '{"success":false,"error":"rate_limited","message":"Too many AI requests right now. Please wait and try again."}';
-                  }
-
-                  location @body_too_large {
-                      internal;
-                      default_type application/json;
-                      add_header Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; script-src 'self'; worker-src 'self'; connect-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; form-action 'self'" always;
-                      add_header X-Content-Type-Options nosniff always;
-                      add_header Referrer-Policy no-referrer always;
-                      add_header X-Frame-Options DENY always;
-                      return 413 '{"success":false,"error":"invalid_request","message":"Request body is too large."}';
-                  }
-
-                  location / {
-                      proxy_pass http://127.0.0.1:8000;
-                  }
-              }
-          }
-      notify: Restart Nginx
-
-    - name: Enable and start application
-      ansible.builtin.systemd_service:
-        name: linux-explainer
-        daemon_reload: true
-        enabled: true
-        state: started
-
-    - name: Enable and start Nginx
+    - name: Start Nginx before the release switch
       ansible.builtin.systemd_service:
         name: nginx
         enabled: true
         state: started
 
-    - name: Apply pending service restarts
-      ansible.builtin.meta: flush_handlers
-
-    - name: Verify application through Nginx without calling Gemini
-      ansible.builtin.uri:
-        url: http://127.0.0.1/health
-        status_code: 200
-      register: health
-      until: health.status == 200
-      retries: 10
-      delay: 2
-
-  handlers:
-    - name: Restart application
-      ansible.builtin.systemd_service:
-        name: linux-explainer
-        daemon_reload: true
-        state: restarted
-
-    - name: Restart Nginx
+    - name: Reload validated Nginx configuration
       ansible.builtin.systemd_service:
         name: nginx
-        state: restarted
+        state: reloaded
+
+    - name: Finalize clean release directory
+      ansible.builtin.command:
+        argv: [mv, --, "{{ stage_dir }}", "{{ release_dir }}"]
+      changed_when: true
+
+    - name: Activate, verify, or roll back the release
+      block:
+        - name: Atomically switch current and save prior release
+          ansible.builtin.command:
+            argv: [/usr/bin/python3, "{{ release_root }}/tools/switch_release.py", activate, --root, "{{ release_root }}", --commit, "{{ release_commit }}"]
+          changed_when: true
+
+        - name: Restart the existing service name on the new release
+          ansible.builtin.systemd_service:
+            name: linux-explainer
+            daemon_reload: true
+            enabled: true
+            state: restarted
+
+        - name: Probe health, all learning pages, and the Bash module worker through Nginx
+          ansible.builtin.command:
+            argv:
+              - curl
+              - --noproxy
+              - '*'
+              - --fail
+              - --silent
+              - --show-error
+              - --output
+              - /dev/null
+              - --write-out
+              - '%{http_code}'
+              - "http://127.0.0.1{{ item }}"
+          loop: [/health, /, /explain, /playground, /missions, /task-builder, /bash, /static/js/bash/worker.js]
+          register: smoke_pages
+          changed_when: false
+          until: smoke_pages.stdout == '200'
+          retries: 5
+          delay: 2
+
+        - name: Inspect response security headers through Nginx
+          ansible.builtin.command:
+            argv: [curl, --noproxy, '*', --fail, --silent, --show-error, --head, http://127.0.0.1/]
+          register: smoke_headers
+          changed_when: false
+
+        - name: Require production headers
+          ansible.builtin.assert:
+            that:
+              - "'content-security-policy:' in (smoke_headers.stdout | lower)"
+              - "'x-content-type-options: nosniff' in (smoke_headers.stdout | lower)"
+              - "'x-frame-options: deny' in (smoke_headers.stdout | lower)"
+              - "'referrer-policy: no-referrer' in (smoke_headers.stdout | lower)"
+
+        - name: Read private active release identity
+          ansible.builtin.slurp:
+            src: "{{ release_root }}/current/release.json"
+          register: active_identity
+
+        - name: Require exact active commit
+          ansible.builtin.assert:
+            that:
+              - (active_identity.content | b64decode | from_json).commit == release_commit
+
+      rescue:
+        - name: Atomically restore the previous release or clear failed first install
+          ansible.builtin.command:
+            argv: [/usr/bin/python3, "{{ release_root }}/tools/switch_release.py", rollback, --root, "{{ release_root }}", --allow-empty]
+          changed_when: true
+
+        - name: Restore prior Nginx configuration when this deployment changed it
+          ansible.builtin.copy:
+            src: "{{ nginx_config.backup_file }}"
+            dest: /etc/nginx/nginx.conf
+            remote_src: true
+            owner: root
+            group: root
+            mode: '0644'
+            validate: /usr/sbin/nginx -t -c %s
+          when: nginx_config.backup_file is defined
+
+        - name: Reload restored Nginx configuration
+          ansible.builtin.systemd_service:
+            name: nginx
+            state: reloaded
+          when: nginx_config.backup_file is defined
+
+        - name: Check whether a prior release was restored
+          ansible.builtin.stat:
+            path: "{{ release_root }}/current"
+            follow: false
+          register: restored_current
+
+        - name: Restart restored service
+          ansible.builtin.systemd_service:
+            name: linux-explainer
+            state: restarted
+          when: restored_current.stat.exists
+
+        - name: Stop service after failed first install
+          ansible.builtin.systemd_service:
+            name: linux-explainer
+            state: stopped
+          when: not restored_current.stat.exists
+
+        - name: Report failed deployment after rollback
+          ansible.builtin.fail:
+            msg: New release failed verification; current was restored to previous when available.
+
+    - name: Remove transferred archive after successful activation
+      ansible.builtin.file:
+        path: "{{ incoming_archive }}"
+        state: absent

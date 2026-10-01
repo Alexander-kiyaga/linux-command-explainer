@@ -148,18 +148,22 @@ def test_operational_config_bounds(monkeypatch):
 
 
 def test_production_ai_limits_cover_only_gemini_endpoints():
-    deploy = (Path(__file__).resolve().parent.parent / "infrastructure" / "aws" / "deploy.yml").read_text()
-    assert "location ~ ^/api/(explain|task-builder/plan|bash/explain)$" in deploy
-    assert "limit_req zone=ai_per_ip" in deploy
-    assert "limit_conn ai_concurrent" in deploy
-    assert "limit_req_status 429;" in deploy
-    assert "limit_conn_status 429;" in deploy
-    assert '"error":"rate_limited"' in deploy
-    assert '"error":"invalid_request"' in deploy
-    assert "error_page 413 = @body_too_large;" in deploy
-    assert "Retry-After 20" in deploy
-    assert "add_header Content-Security-Policy" in deploy
-    ordinary_location = deploy.split("location / {", 1)[1].split("}", 1)[0]
+    aws = Path(__file__).resolve().parent.parent / "infrastructure" / "aws"
+    deploy = (aws / "deploy.yml").read_text()
+    nginx = (aws / "templates" / "nginx.conf.j2").read_text()
+    assert "location ~ ^/api/(explain|task-builder/plan|bash/explain)$" in nginx
+    assert "limit_req zone=ai_per_ip" in nginx
+    assert "limit_conn ai_concurrent" in nginx
+    assert "limit_req_status 429;" in nginx
+    assert "limit_conn_status 429;" in nginx
+    assert '"error":"rate_limited"' in nginx
+    assert '"error":"invalid_request"' in nginx
+    assert "error_page 413 = @body_too_large;" in nginx
+    assert "Retry-After 20" in nginx
+    assert "add_header Content-Security-Policy" in nginx
+    ordinary_location = nginx.split("location / {", 1)[1].split("}", 1)[0]
     assert "proxy_pass" in ordinary_location
     assert "limit_req" not in ordinary_location and "limit_conn" not in ordinary_location
-    assert "Strict-Transport-Security" not in deploy
+    assert "ai_requests_per_minute: 6" in deploy
+    assert "ai_max_inflight: 1" in deploy
+    assert "certbot" not in deploy

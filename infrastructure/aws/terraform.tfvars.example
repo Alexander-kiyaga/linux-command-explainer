@@ -1,0 +1,6 @@
+# Copy to terraform.tfvars (ignored by Git) and fill in your own AWS values.
+aws_region     = "eu-north-1"
+vpc_id         = "vpc-REPLACE_ME"
+subnet_id      = "subnet-REPLACE_ME"
+ec2_key_name   = "REPLACE_WITH_EXISTING_KEY_PAIR_NAME"
+admin_ssh_cidr = "203.0.113.10/32"

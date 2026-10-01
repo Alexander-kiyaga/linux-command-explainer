@@ -1,0 +1,8 @@
+# Copy to deploy-vars.yml (ignored by Git) and update for each release.
+release_artifact: /absolute/path/to/linuxlab-FULL_COMMIT_PREFIX.tar.gz
+release_commit: REPLACE_WITH_FULL_GIT_COMMIT
+release_sha256: REPLACE_WITH_64_CHARACTER_SHA256
+secrets_file: /absolute/private/path/linuxlab-runtime.env
+ai_requests_per_minute: 6
+ai_burst: 2
+ai_max_inflight: 1

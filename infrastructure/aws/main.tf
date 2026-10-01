@@ -1,4 +1,5 @@
 terraform {
+  required_version = ">= 1.5.0"
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -8,7 +9,54 @@ terraform {
 }
 
 provider "aws" {
-  region = "eu-north-1"
+  region = var.aws_region
+}
+
+variable "aws_region" {
+  description = "AWS region for the LinuxLab instance."
+  type        = string
+}
+
+variable "vpc_id" {
+  description = "Existing VPC containing the public subnet."
+  type        = string
+  validation {
+    condition     = can(regex("^vpc-[0-9a-f]+$", var.vpc_id))
+    error_message = "vpc_id must be an AWS VPC ID."
+  }
+}
+
+variable "subnet_id" {
+  description = "Existing public subnet with an Internet Gateway route."
+  type        = string
+  validation {
+    condition     = can(regex("^subnet-[0-9a-f]+$", var.subnet_id))
+    error_message = "subnet_id must be an AWS subnet ID."
+  }
+}
+
+variable "ec2_key_name" {
+  description = "Existing EC2 key-pair name; private key stays with the administrator."
+  type        = string
+  validation {
+    condition     = length(trimspace(var.ec2_key_name)) > 0
+    error_message = "ec2_key_name cannot be empty."
+  }
+}
+
+variable "admin_ssh_cidr" {
+  description = "Single administrator IPv4 CIDR, preferably /32. Never use 0.0.0.0/0."
+  type        = string
+  validation {
+    condition     = can(cidrnetmask(var.admin_ssh_cidr)) && endswith(var.admin_ssh_cidr, "/32")
+    error_message = "admin_ssh_cidr must be one administrator IPv4 address with /32."
+  }
+}
+
+variable "instance_type" {
+  description = "Small portfolio instance size."
+  type        = string
+  default     = "t3.micro"
 }
 
 data "aws_ssm_parameter" "amazon_linux" {
@@ -18,18 +66,18 @@ data "aws_ssm_parameter" "amazon_linux" {
 resource "aws_security_group" "web" {
   name_prefix = "linux-explainer-"
   description = "Linux Command Explainer HTTP and SSH"
-  vpc_id      = "vpc-022797c3c4b910a7b"
+  vpc_id      = var.vpc_id
 
   ingress {
-    description = "SSH from my public IP"
+    description = "Administrator SSH"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["78.73.30.214/32"]
+    cidr_blocks = [var.admin_ssh_cidr]
   }
 
   ingress {
-    description = "Public website"
+    description = "Public HTTP assignment site"
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
@@ -43,25 +91,22 @@ resource "aws_security_group" "web" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = {
-    Name = "linux-command-explainer"
-  }
+  tags = { Name = "linux-command-explainer" }
 }
 
 resource "aws_instance" "web" {
   ami                         = data.aws_ssm_parameter.amazon_linux.value
-  instance_type               = "t3.micro"
-  subnet_id                   = "subnet-0223597407143adbe"
-  key_name                    = "devops.school.level3.Alex_Kiyaga"
+  instance_type               = var.instance_type
+  subnet_id                   = var.subnet_id
+  key_name                    = var.ec2_key_name
   associate_public_ip_address = true
   vpc_security_group_ids      = [aws_security_group.web.id]
 
-  user_data = <<-SCRIPT
+  user_data                   = <<-SCRIPT
     #!/bin/bash
     set -euo pipefail
     dnf install -y python3.12 python3.12-pip
   SCRIPT
-
   user_data_replace_on_change = true
 
   root_block_device {
@@ -76,19 +121,10 @@ resource "aws_instance" "web" {
     http_tokens   = "required"
   }
 
-  tags = {
-    Name = "linux-command-explainer"
-  }
+  tags = { Name = "linux-command-explainer" }
 }
 
 output "public_ip" {
-  value = aws_instance.web.public_ip
-}
-
-output "website_url" {
-  value = "http://${aws_instance.web.public_ip}"
-}
-
-output "ssh_command" {
-  value = "ssh -i ~/.ssh/id_rsa_level3 ec2-user@${aws_instance.web.public_ip}"
+  description = "Use as the Ansible inventory address; it may change after EC2 stop/start."
+  value       = aws_instance.web.public_ip
 }
