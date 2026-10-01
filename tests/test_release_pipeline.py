@@ -192,6 +192,8 @@ def test_deployment_prepares_before_active_changes_and_recovers_legacy():
     ]
     offsets = [preparation.index(name) for name in ordered_preparation]
     assert offsets == sorted(offsets)
+    assert preparation.index("Finalize clean release directory") < preparation.index("Verify Gunicorn from the finalized release without binding")
+    assert "argv: [\"{{ release_dir }}/venv/bin/python\", -m, gunicorn, --check-config, \"wsgi:app\"]" in preparation
     assert "local_secrets.stat.mode | default('') in ['0400', '0600']" in preparation
     assert activation.index("Atomically switch current") < activation.index("Activate prepared Gunicorn")
     assert activation.index("Probe new Gunicorn directly") < activation.index("Activate validated Nginx")
@@ -200,6 +202,16 @@ def test_deployment_prepares_before_active_changes_and_recovers_legacy():
     assert "Restore the original legacy Nginx configuration" in activation
     assert "Restore the previous LinuxLab release" in activation
     assert "Check recovered application through Nginx" in activation
+
+
+def test_gunicorn_unit_uses_relocated_venv_python_not_stale_console_script():
+    template = (Path(__file__).resolve().parent.parent / "infrastructure/aws/templates/linux-explainer.service.j2").read_text()
+    unit = Environment(autoescape=False).from_string(template).render(
+        release_root="/opt/linuxlab", app_user="linuxexplainer"
+    )
+    assert "ExecStart=/opt/linuxlab/current/venv/bin/python -m gunicorn " in unit
+    assert "ExecStart=/opt/linuxlab/current/venv/bin/gunicorn " not in unit
+    assert "WorkingDirectory=/opt/linuxlab/current" in unit
 
 
 def test_amazon_linux_smoke_client_uses_curl_minimal_without_full_curl_conflict():

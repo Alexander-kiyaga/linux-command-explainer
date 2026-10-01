@@ -310,7 +310,7 @@
         - app/__init__.py
         - app/static/js/bash/worker.js
         - release.json
-        - venv/bin/gunicorn
+        - venv/bin/python
       register: staged_files
 
     - name: Require a complete runnable staged release
@@ -357,6 +357,15 @@
       ansible.builtin.command:
         argv: [mv, --, "{{ stage_dir }}", "{{ release_dir }}"]
       changed_when: true
+
+    - name: Verify Gunicorn from the finalized release without binding
+      ansible.builtin.command:
+        argv: ["{{ release_dir }}/venv/bin/python", -m, gunicorn, --check-config, "wsgi:app"]
+        chdir: "{{ release_dir }}"
+      become_user: "{{ app_user }}"
+      environment:
+        PYTHONDONTWRITEBYTECODE: '1'
+      changed_when: false
 
     - name: Activate, verify, or roll back the release
       block:
