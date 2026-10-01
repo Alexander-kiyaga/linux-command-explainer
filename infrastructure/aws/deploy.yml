@@ -97,9 +97,15 @@
 
   tasks:
     - name: Install web server and smoke-check client
-      ansible.builtin.command: dnf install -y nginx curl
+      # Amazon Linux 2023 ships curl-minimal, which provides the curl command.
+      # Requesting the full curl package conflicts with that default package.
+      ansible.builtin.command: dnf install -y nginx curl-minimal
       register: packages
       changed_when: "'Nothing to do' not in packages.stdout"
+
+    - name: Verify curl is available for deployment smoke checks
+      ansible.builtin.command: curl --version
+      changed_when: false
 
     - name: Create application group
       ansible.builtin.group:

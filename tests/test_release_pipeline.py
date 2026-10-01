@@ -200,3 +200,11 @@ def test_deployment_prepares_before_active_changes_and_recovers_legacy():
     assert "Restore the original legacy Nginx configuration" in activation
     assert "Restore the previous LinuxLab release" in activation
     assert "Check recovered application through Nginx" in activation
+
+
+def test_amazon_linux_smoke_client_uses_curl_minimal_without_full_curl_conflict():
+    playbook = (Path(__file__).resolve().parent.parent / "infrastructure/aws/deploy.yml").read_text()
+    assert "dnf install -y nginx curl-minimal" in playbook
+    assert "dnf install -y nginx curl\n" not in playbook
+    assert playbook.index("curl --version") < playbook.index("Verify the existing legacy root page before migration")
+    assert "argv: [curl, --noproxy" in playbook
