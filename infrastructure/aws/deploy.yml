@@ -301,32 +301,8 @@
       no_log: true
       diff: false
 
-    - name: Check required staged application files
-      ansible.builtin.stat:
-        path: "{{ stage_dir }}/{{ item }}"
-      loop:
-        - wsgi.py
-        - requirements.txt
-        - app/__init__.py
-        - app/static/js/bash/worker.js
-        - release.json
-        - venv/bin/python
-      register: staged_files
-
-    - name: Require a complete runnable staged release
-      ansible.builtin.assert:
-        that:
-          - staged_files.results | map(attribute='stat.isreg') | min
-
-    - name: Probe staged Flask application without starting a public service
-      ansible.builtin.command:
-        argv:
-          - "{{ stage_dir }}/venv/bin/python"
-          - -c
-          - "from wsgi import app; response = app.test_client().get('/health'); assert response.status_code == 200, response.status_code"
-        chdir: "{{ stage_dir }}"
-      become_user: "{{ app_user }}"
-      changed_when: false
+    - name: Validate staged release files and virtualenv
+      ansible.builtin.import_tasks: tasks/validate_staged_release.yml
 
     - name: Install atomic release switch tool
       ansible.builtin.copy:

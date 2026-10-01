@@ -186,7 +186,7 @@ def test_deployment_prepares_before_active_changes_and_recovers_legacy():
         "Extract only into the fresh staging directory",
         "Install pinned dependencies into this release",
         "Install private runtime environment outside releases",
-        "Probe staged Flask application without starting a public service",
+        "Validate staged release files and virtualenv",
         "Prepare and validate Nginx without changing its active configuration",
         "Finalize clean release directory",
     ]
@@ -202,6 +202,12 @@ def test_deployment_prepares_before_active_changes_and_recovers_legacy():
     assert "Restore the original legacy Nginx configuration" in activation
     assert "Restore the previous LinuxLab release" in activation
     assert "Check recovered application through Nginx" in activation
+
+    validator = (Path(__file__).resolve().parent.parent / "infrastructure/aws/tasks/validate_staged_release.yml").read_text()
+    assert "follow: true" in validator
+    assert "staged_python.stat.executable | default(false)" in validator
+    assert validator.index("Require a real executable Python target") < validator.index("Verify the application user can execute staged Python")
+    assert validator.index("Verify the application user can execute staged Python") < validator.index("Probe staged Flask application")
 
 
 def test_gunicorn_unit_uses_relocated_venv_python_not_stale_console_script():
